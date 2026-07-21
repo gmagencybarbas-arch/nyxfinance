@@ -6,12 +6,18 @@ import { Check } from "lucide-react";
 
 const PHRASE = "Gastei R$45 no mercado.";
 
-const FIELDS = [
+type MockField = {
+  label: string;
+  delay: number;
+  accent?: boolean;
+};
+
+const FIELDS: MockField[] = [
   { label: "Alimentação", delay: 0 },
   { label: "R$ 45", delay: 0.12 },
   { label: "Hoje", delay: 0.24 },
   { label: "Registrado", delay: 0.36, accent: true },
-] as const;
+];
 
 type Phase = "phrase" | "transform" | "result";
 

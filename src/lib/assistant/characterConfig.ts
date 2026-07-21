@@ -1,4 +1,9 @@
-import { CHARACTER_IDS, type CharacterSlug } from "./ids";
+import {
+  CHARACTER_IDS,
+  type AudioKey,
+  type CharacterSlug,
+  type PersonalityKey,
+} from "./ids";
 import { getPersonalityConfig } from "./personalityConfig";
 import type { CharacterRuntimeConfig } from "./types";
 

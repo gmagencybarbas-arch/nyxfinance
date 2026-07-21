@@ -1,0 +1,275 @@
+// NYX — Core financial engine
+// PostgreSQL + Prisma, multi-tenant, Supabase auth (userId = auth.users.id)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELED
+}
+
+// ---------------------------------------------------------------------------
+// Multi-tenant & User (sync with Supabase auth)
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  transactions Transaction[]
+  installmentPlans InstallmentPlan[]
+  recurringBills RecurringBill[]
+}
+
+/// Id must match Supabase auth.users.id for authenticated users.
+model User {
+  id            String   @id @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions  Transaction[]
+  installmentPlans InstallmentPlan[]
+  recurringBills RecurringBill[]
+  characterUnlocks UserCharacterUnlock[]
+  skinUnlocks      UserSkinUnlock[]
+  assistantPreference UserAssistantPreference?
+  journeyEvents    UserJourneyEvent[]
+}
+
+// ---------------------------------------------------------------------------
+// Assistente: personagens, skins, desbloqueios e preferência
+// ---------------------------------------------------------------------------
+
+enum SkinAvailabilityStatus {
+  available
+  locked
+  coming_soon
+  unavailable
+}
+
+model Character {
+  id               String   @id @default(uuid()) @db.Uuid
+  slug             String   @unique @db.VarChar(64)
+  name             String   @db.VarChar(128)
+  description      String   @db.VarChar(512)
+  personalityKey   String   @map("personality_key") @db.VarChar(64)
+  defaultUnlocked  Boolean  @default(false) @map("default_unlocked")
+  active           Boolean  @default(true)
+  displayOrder     Int      @default(0) @map("display_order")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  skins       CharacterSkin[]
+  unlocks     UserCharacterUnlock[]
+  preferencesAsCharacter UserAssistantPreference[] @relation("PrefCharacter")
+
+  @@map("characters")
+}
+
+model CharacterSkin {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  characterId        String                 @map("character_id") @db.Uuid
+  slug               String                 @db.VarChar(64)
+  name               String                 @db.VarChar(128)
+  description        String                 @db.VarChar(512)
+  assetConfig        Json                   @map("asset_config")
+  defaultUnlocked    Boolean                @default(false) @map("default_unlocked")
+  isDefault          Boolean                @default(false) @map("is_default")
+  active             Boolean                @default(true)
+  displayOrder       Int                    @default(0) @map("display_order")
+  availabilityStatus SkinAvailabilityStatus @default(locked) @map("availability_status")
+  unlockRuleKey      String?                @map("unlock_rule_key") @db.VarChar(128)
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  character   Character                 @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  unlocks     UserSkinUnlock[]
+  preferencesAsSkin UserAssistantPreference[] @relation("PrefSkin")
+
+  @@unique([characterId, slug])
+  @@unique([slug])
+  @@index([characterId, active])
+  @@map("character_skins")
+}
+
+model UserCharacterUnlock {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  characterId  String   @map("character_id") @db.Uuid
+  unlockSource String   @map("unlock_source") @db.VarChar(64)
+  unlockedAt   DateTime @default(now()) @map("unlocked_at") @db.Timestamptz(6)
+  metadata     Json?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, characterId])
+  @@index([userId])
+  @@map("user_character_unlocks")
+}
+
+model UserSkinUnlock {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  skinId       String   @map("skin_id") @db.Uuid
+  unlockSource String   @map("unlock_source") @db.VarChar(64)
+  unlockedAt   DateTime @default(now()) @map("unlocked_at") @db.Timestamptz(6)
+  metadata     Json?
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skin CharacterSkin @relation(fields: [skinId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skinId])
+  @@index([userId])
+  @@map("user_skin_unlocks")
+}
+
+model UserAssistantPreference {
+  userId              String   @id @map("user_id") @db.Uuid
+  selectedCharacterId String   @map("selected_character_id") @db.Uuid
+  selectedSkinId      String   @map("selected_skin_id") @db.Uuid
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character Character     @relation("PrefCharacter", fields: [selectedCharacterId], references: [id], onDelete: Restrict)
+  skin      CharacterSkin @relation("PrefSkin", fields: [selectedSkinId], references: [id], onDelete: Restrict)
+
+  @@map("user_assistant_preferences")
+}
+
+/// Eventos da Jornada que não dão para derivar só de dados financeiros.
+model UserJourneyEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  eventKey  String   @map("event_key") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  metadata  Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventKey])
+  @@index([userId])
+  @@map("user_journey_events")
+}
+
+/// Perfil do usuário (1:1 com Supabase auth.users.id). RLS no Postgres.
+model Profile {
+  id                    String    @id @db.Uuid
+  displayName           String?   @map("display_name")
+  avatarUrl             String?   @map("avatar_url")
+  profession            String?
+  jobTitle              String?   @map("job_title")
+  salaryRange           String?   @map("salary_range")
+  payday                Int?      @db.SmallInt
+  financialGoal         String?   @map("financial_goal")
+  themePreference       String?   @default("dark") @map("theme_preference")
+  onboardingCompleted   Boolean   @default(false) @map("onboarding_completed")
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Contas recorrentes mensais (compromissos fixos)
+// ---------------------------------------------------------------------------
+
+model RecurringBill {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  title     String   @db.VarChar(256)
+  amount    Decimal  @db.Decimal(19, 4)
+  category  String   @db.VarChar(128)
+  dueDay    Int      @map("due_day")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+  @@index([tenantId])
+  @@map("recurring_bills")
+}
+
+// ---------------------------------------------------------------------------
+// Parcelamento (plano → N transações)
+// ---------------------------------------------------------------------------
+
+model InstallmentPlan {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  description        String?  @db.VarChar(512)
+  totalInstallments  Int      @map("total_installments")
+  installmentAmount  Decimal  @map("installment_amount") @db.Decimal(19, 4)
+  totalAmount        Decimal? @map("total_amount") @db.Decimal(19, 4)
+  firstDueDate       DateTime @map("first_due_date") @db.Timestamptz(6)
+  trackInCommitments Boolean  @default(false) @map("track_in_commitments")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transactions  Transaction[]
+
+  @@index([userId])
+  @@map("installment_plans")
+}
+
+// ---------------------------------------------------------------------------
+// Transaction — financial heart
+// Rule: amount is always stored > 0; type controls the financial signal.
+// ---------------------------------------------------------------------------
+
+model Transaction {
+  id         String            @id @default(uuid()) @db.Uuid
+  userId     String            @map("user_id") @db.Uuid
+  tenantId   String            @map("tenant_id") @db.Uuid
+  type       TransactionType
+  amount     Decimal           @db.Decimal(19, 4)
+  currency   String            @default("BRL") @db.VarChar(3)
+  category   String            @db.VarChar(128)
+  description String?          @db.VarChar(512)
+  status     TransactionStatus @default(COMPLETED)
+  occurredAt DateTime          @map("occurred_at") @db.Timestamptz(6)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  installmentPlanId String?    @map("installment_plan_id") @db.Uuid
+  installmentNumber Int?       @map("installment_number")
+  isInstallment     Boolean     @default(false) @map("is_installment")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  installmentPlan InstallmentPlan? @relation(fields: [installmentPlanId], references: [id], onDelete: SetNull)
+
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([tenantId, occurredAt(sort: Desc)])
+  @@index([category])
+  @@index([status])
+  @@map("transactions")
+}

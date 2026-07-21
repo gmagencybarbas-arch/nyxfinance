@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="996" height="990" viewBox="0 0 996 990" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="996" y2="990" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#12081F"/>
+      <stop offset="1" stop-color="#1A1028"/>
+    </linearGradient>
+    <linearGradient id="fig" x1="498" y1="160" x2="498" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C5CFF" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#2A1B3D" stop-opacity="0.85"/>
+    </linearGradient>
+    <filter id="blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+  <rect width="996" height="990" fill="url(#bg)"/>
+  <ellipse cx="498" cy="820" rx="220" ry="40" fill="#000" opacity="0.35"/>
+  <g filter="url(#blur)" opacity="0.9">
+    <path d="M498 190c70 0 126 56 126 126s-56 126-126 126-126-56-126-126 56-126 126-126z" fill="url(#fig)"/>
+    <path d="M318 720c20-150 70-240 180-240s160 90 180 240c-70 50-140 70-180 70s-110-20-180-70z" fill="url(#fig)"/>
+  </g>
+  <text x="498" y="920" text-anchor="middle" fill="#A78BFA" font-family="system-ui,sans-serif" font-size="28" opacity="0.55">
+    Preview em breve
+  </text>
+</svg>

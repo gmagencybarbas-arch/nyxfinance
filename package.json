@@ -1,0 +1,50 @@
+{
+  "name": "mini-nyx",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "prisma generate && tsx prisma/seed.ts",
+    "user:reset-first-login": "tsx --env-file=.env.local scripts/reset-user-first-login.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.9.0",
+    "@supabase/ssr": "0.8.0",
+    "@supabase/supabase-js": "2.95.3",
+    "@tailwindcss/postcss": "^4",
+    "framer-motion": "^11",
+    "lucide-react": "^0.460.0",
+    "next": "16.1.6",
+    "openai": "^6.46.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^2.13.3",
+    "tailwindcss": "^4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "25.2.0",
+    "@types/react": "19.2.10",
+    "@types/react-dom": "19.2.3",
+    "autoprefixer": "10.4.23",
+    "eslint": "^9.39.2",
+    "eslint-config-next": "16.1.6",
+    "postcss": "8.5.6",
+    "prisma": "^6.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

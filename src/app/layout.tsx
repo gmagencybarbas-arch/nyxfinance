@@ -9,6 +9,7 @@ import { ToastProvider } from "@/contexts/ToastContext";
 import { TapSoundProvider } from "@/components/TapSoundProvider";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { ThemeScript } from "@/components/ThemeScript";
+import { MainShell } from "@/components/layout/MainShell";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -44,9 +45,7 @@ export default function RootLayout({
               <ToastProvider>
                 <AssistantProvider>
                   <TapSoundProvider>
-                    <div className="pb-[max(5rem,calc(4.5rem+env(safe-area-inset-bottom)))] md:pb-0">
-                      {children}
-                    </div>
+                    <MainShell>{children}</MainShell>
                     <BottomNav />
                   </TapSoundProvider>
                 </AssistantProvider>

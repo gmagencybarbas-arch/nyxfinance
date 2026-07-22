@@ -21,21 +21,35 @@ const ITEMS = [
 
 const HIDDEN_PATHS = ["/login", "/register", "/auth", "/onboarding"];
 
-export function BottomNav() {
+type BottomNavProps = {
+  /** fixed = flutuante global; inline = dentro do flex shell (ex.: chat mobile) */
+  variant?: "fixed" | "inline";
+};
+
+export function BottomNav({ variant = "fixed" }: BottomNavProps) {
   const pathname = usePathname();
   const isHidden = HIDDEN_PATHS.some((p) => pathname.startsWith(p));
 
-  if (isHidden) return null;
+  // No chat mobile o nav entra no shell da página (inline), não no fixed global.
+  if (variant === "fixed" && (isHidden || pathname === "/nyx")) return null;
+  if (variant === "inline" && isHidden) return null;
+
+  const shellClass =
+    variant === "fixed"
+      ? "fixed bottom-0 left-0 right-0 z-50 md:hidden pb-[env(safe-area-inset-bottom)]"
+      : "relative z-20 w-full shrink-0 md:hidden pb-[env(safe-area-inset-bottom)]";
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 md:hidden pb-[env(safe-area-inset-bottom)]"
+      className={shellClass}
       role="navigation"
       aria-label="Navegação principal"
     >
       <motion.div
-        className="mx-4 mb-2 rounded-2xl border border-white/[0.06] bg-[var(--background-secondary)]/90 backdrop-blur-xl shadow-[0_0_24px_rgba(167,139,250,0.05)]"
-        initial={{ y: 24, opacity: 0 }}
+        className={`mx-4 rounded-2xl border border-white/[0.06] bg-[var(--background-secondary)]/90 backdrop-blur-xl shadow-[0_0_24px_rgba(167,139,250,0.05)] ${
+          variant === "fixed" ? "mb-2" : "mb-1.5 mt-1"
+        }`}
+        initial={variant === "fixed" ? { y: 24, opacity: 0 } : false}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
       >

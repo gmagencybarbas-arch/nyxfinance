@@ -34,6 +34,9 @@ import {
 } from "@/lib/nyx/clientInterpret";
 import { persistNyxActions } from "@/lib/nyx/persistActions";
 import { mergePendingAfterConfirm } from "@/lib/nyx/normalize";
+import { useAssistant } from "@/contexts/AssistantContext";
+import { BottomNav } from "@/components/navigation/BottomNav";
+import { NyxBootScreen } from "./NyxBootScreen";
 import type { NyxPendingBatch, NyxAction } from "@/lib/nyx/types";
 
 const TYPING_DELAY_MS_MIN = 400;
@@ -126,6 +129,9 @@ export function NyxPage() {
   const { user } = useAuth();
   const displayName = useProfile()?.displayName;
   const isMobile = useIsMobile();
+  const assistant = useAssistant();
+  const [bootDone, setBootDone] = useState(false);
+  const showBoot = !bootDone;
   const {
     state: visualState,
     notifyTyping,
@@ -796,18 +802,10 @@ export function NyxPage() {
     [unlockSounds, notifyInteraction, notifyTyping]
   );
 
-  const chatColumn = (
-    <div className="relative flex min-h-0 flex-1 flex-col">
-      <NyxChat
-        messages={messages}
-        isThinking={nyxState === "thinking"}
-        className="min-h-0 flex-1"
-        onScrollOffset={setChatScrollOffset}
-        onShortcutSelect={handleShortcutSelect}
-      />
-
+  const scrollFooter = (
+    <>
       {(pendingBatch && pendingBatch.actions.length > 0) || savedFlash.length > 0 ? (
-        <div className="shrink-0 py-3">
+        <div className="py-2">
           <NyxActionReview
             batch={pendingBatch}
             failedIds={failedActionIds}
@@ -832,7 +830,7 @@ export function NyxPage() {
       ) : null}
 
       {showCommitmentButtons && (
-        <div className="flex shrink-0 justify-center gap-3 px-4 pb-2">
+        <div className="flex justify-center gap-3 px-4 pb-2">
           <button
             type="button"
             onClick={handleInstallmentCommitmentNo}
@@ -851,7 +849,7 @@ export function NyxPage() {
       )}
 
       {!showCommitmentButtons && optionalDescUi === "choose" && (
-        <div className="flex shrink-0 justify-center gap-3 px-4 pb-2">
+        <div className="flex justify-center gap-3 px-4 pb-2">
           <button
             type="button"
             onClick={handleOptionalDescNo}
@@ -868,42 +866,51 @@ export function NyxPage() {
           </button>
         </div>
       )}
+    </>
+  );
 
-      <div className="sticky bottom-0 z-20 shrink-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent px-0 pb-[calc(4.25rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-[2px] md:pb-6 md:pt-4">
-        <NyxInput
-          ref={nyxInputRef}
-          size={isMobile ? "default" : "large"}
-          companionHint={companionHint}
-          onSend={handleSend}
-          onMicToggle={handleMicToggle}
-          isListening={isListening}
-          disabled={isBusy}
-          chatLocked={chatLocked}
-          descriptionTypingOnly={optionalDescUi === "typing_description"}
-          onTypingChange={(typing) => {
-            setIsTypingDraft(typing);
-            unlockSounds();
-            if (typing) {
-              notifyTyping();
-              playTyping();
-            } else {
-              notifyTypingCleared();
-            }
-          }}
-        />
-      </div>
-    </div>
+  const composer = (
+    <NyxInput
+      ref={nyxInputRef}
+      size={isMobile ? "default" : "large"}
+      companionHint={companionHint}
+      onSend={handleSend}
+      onMicToggle={handleMicToggle}
+      isListening={isListening}
+      disabled={isBusy}
+      chatLocked={chatLocked}
+      descriptionTypingOnly={optionalDescUi === "typing_description"}
+      onTypingChange={(typing) => {
+        setIsTypingDraft(typing);
+        unlockSounds();
+        if (typing) {
+          notifyTyping();
+          playTyping();
+        } else {
+          notifyTypingCleared();
+        }
+      }}
+    />
   );
 
   return (
     <div
-      className="relative flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden"
+      className={`relative flex min-h-0 flex-col overflow-hidden ${
+        isMobile ? "h-full" : "h-[calc(100dvh-3.5rem)]"
+      }`}
       data-nyx-visual={visualState}
       onPointerDownCapture={() => {
         unlockSounds();
         notifyInteraction();
       }}
     >
+      {showBoot ? (
+        <NyxBootScreen
+          ready={assistant.assetsReady && !assistant.isLoading}
+          onDone={() => setBootDone(true)}
+        />
+      ) : null}
+
       {/* Sala digital — fundo unificado */}
       <div
         className="pointer-events-none absolute inset-0"
@@ -917,36 +924,42 @@ export function NyxPage() {
         }}
       />
 
-      {/* Mobile: Nyx no topo */}
-      {isMobile && (
-        <div className="relative z-20 h-[34vh] max-h-[300px] min-h-[160px] shrink-0 overflow-visible">
-          <div className="absolute right-3 top-2 z-30">
-            <NyxSoundToggle enabled={soundEnabled} onChange={setSoundEnabled} />
-          </div>
-          <NyxAvatarStage
-            state={visualState}
-            scrollShrink={scrollShrink}
-            compact
-            className="h-full translate-y-[37px]"
-          />
-        </div>
-      )}
+      {isMobile ? (
+        <>
+          {/* 1. Personagem compacta */}
+          <header className="relative z-20 h-[22dvh] max-h-[168px] min-h-[112px] shrink-0 overflow-hidden">
+            <div className="absolute right-3 top-2 z-30">
+              <NyxSoundToggle enabled={soundEnabled} onChange={setSoundEnabled} />
+            </div>
+            <NyxAvatarStage
+              state={visualState}
+              scrollShrink={scrollShrink}
+              compact
+              className="h-full translate-y-2"
+            />
+          </header>
 
-      <div
-        className={`relative z-10 flex min-h-0 flex-1 ${
-          isMobile ? "flex-col" : "flex-row"
-        }`}
-      >
-        {/* Conversa */}
-        <div
-          className={`relative flex min-h-0 min-w-0 flex-col ${
-            isMobile
-              ? "flex-1 rounded-t-2xl border-t border-white/[0.06] bg-[var(--background)]/55"
-              : "w-[58%] max-w-[58%]"
-          }`}
-        >
-          {/* Blend suave para a Nyx (desktop) */}
-          {!isMobile && (
+          {/* 2–3. Conversa rolável + composer fixo no fluxo */}
+          <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden rounded-t-2xl border-t border-white/[0.06] bg-[var(--background)]/70">
+            <NyxChat
+              messages={messages}
+              isThinking={nyxState === "thinking"}
+              className="min-h-0 flex-1"
+              onScrollOffset={setChatScrollOffset}
+              onShortcutSelect={handleShortcutSelect}
+              scrollFooter={scrollFooter}
+            />
+            <div className="shrink-0 border-t border-white/[0.04] bg-[var(--background)]/90 px-0 pb-2 pt-2 backdrop-blur-sm">
+              {composer}
+            </div>
+          </div>
+
+          {/* 4. Bottom nav no shell (não fixed) */}
+          <BottomNav variant="inline" />
+        </>
+      ) : (
+        <div className="relative z-10 flex min-h-0 flex-1 flex-row">
+          <div className="relative flex min-h-0 min-w-0 w-[58%] max-w-[58%] flex-col">
             <div
               className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-16"
               style={{
@@ -955,14 +968,22 @@ export function NyxPage() {
               }}
               aria-hidden
             />
-          )}
-          {chatColumn}
-        </div>
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <NyxChat
+                messages={messages}
+                isThinking={nyxState === "thinking"}
+                className="min-h-0 flex-1"
+                onScrollOffset={setChatScrollOffset}
+                onShortcutSelect={handleShortcutSelect}
+                scrollFooter={scrollFooter}
+              />
+              <div className="shrink-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent px-0 pb-6 pt-4">
+                {composer}
+              </div>
+            </div>
+          </div>
 
-        {/* Desktop: Nyx integrada */}
-        {!isMobile && (
           <div className="relative w-[42%] max-w-[42%] shrink-0 self-stretch overflow-visible">
-            {/* Transição sem linha rígida */}
             <div
               className="pointer-events-none absolute inset-y-0 left-0 z-10 w-28"
               style={{
@@ -988,8 +1009,8 @@ export function NyxPage() {
               className="h-full w-full"
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

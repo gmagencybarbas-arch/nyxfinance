@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatMessage } from "./ChatMessage";
 import type { ChatMessageType } from "./types";
@@ -19,6 +19,8 @@ interface NyxChatProps {
   onScrollOffset?: (offset: number) => void;
   /** Empty state: preenche input sem enviar. */
   onShortcutSelect?: (text: string) => void;
+  /** Conteúdo após as mensagens, dentro da mesma área de scroll (ex.: review). */
+  scrollFooter?: ReactNode;
 }
 
 export function NyxChat({
@@ -27,9 +29,10 @@ export function NyxChat({
   className = "",
   onScrollOffset,
   onShortcutSelect,
+  scrollFooter,
 }: NyxChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isEmpty = messages.length === 0 && !isThinking;
+  const isEmpty = messages.length === 0 && !isThinking && !scrollFooter;
 
   useEffect(() => {
     if (isEmpty) return;
@@ -37,7 +40,7 @@ export function NyxChat({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages, isThinking, isEmpty]);
+  }, [messages, isThinking, isEmpty, scrollFooter]);
 
   return (
     <div
@@ -45,11 +48,11 @@ export function NyxChat({
       onScroll={(e) => {
         onScrollOffset?.(e.currentTarget.scrollTop);
       }}
-      className={`flex flex-col overflow-y-auto overflow-x-hidden scroll-smooth ${className}`}
+      className={`flex min-h-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain scroll-smooth ${className}`}
       style={{ scrollbarWidth: "thin" }}
     >
       {isEmpty ? (
-        <div className="flex min-h-full flex-1 flex-col items-center justify-center px-4 py-10">
+        <div className="flex min-h-full flex-1 flex-col items-center justify-center px-4 py-8">
           <div className="w-full max-w-md text-center">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-violet-300/70">
               Nyx
@@ -74,7 +77,7 @@ export function NyxChat({
           </div>
         </div>
       ) : (
-        <div className="mx-auto flex w-full max-w-[40rem] flex-col gap-3.5 px-3 pt-[25px] pb-4 md:px-5 md:py-5">
+        <div className="mx-auto flex w-full max-w-[40rem] flex-col gap-3.5 px-3 pb-4 pt-4 md:px-5 md:py-5">
           <AnimatePresence mode="popLayout">
             {messages.map((msg, i) => (
               <ChatMessage key={msg.id} message={msg} index={i} />
@@ -98,6 +101,9 @@ export function NyxChat({
               </motion.div>
             )}
           </AnimatePresence>
+          {scrollFooter ? (
+            <div className="pt-1 pb-2">{scrollFooter}</div>
+          ) : null}
         </div>
       )}
     </div>

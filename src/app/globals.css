@@ -54,6 +54,8 @@ html:not(.dark) .profile-sections > * + * {
 
 html {
   color-scheme: dark;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .dashboard-card {
@@ -118,6 +120,8 @@ html:not(.dark) .balance-card-hero:hover {
 }
 
 body {
+  max-width: 100%;
+  overflow-x: hidden;
   background-color: var(--background);
   background-image: radial-gradient(
     ellipse 120% 80% at 50% 0%,

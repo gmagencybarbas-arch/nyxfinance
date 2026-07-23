@@ -13,7 +13,6 @@ import {
   NyxPrimeCard,
   ProfileIdentitySection,
   FinancialOrgSection,
-  RecurringBillsDrawer,
   SecuritySection,
   NotificationsSection,
   ThemePreferenceSection,
@@ -24,8 +23,8 @@ import {
   MOCK_NOTIFICATION_SETTINGS,
   MOCK_REFERRAL_CODE,
 } from "./mocks/profile";
-import { generateId } from "./utils/profile";
 import { useRecurringBills } from "@/hooks/useRecurringBills";
+import { useRecurringBillsUI } from "@/contexts/RecurringBillsUIContext";
 import { resetOnboarding } from "@/lib/onboarding/completeOnboarding";
 import {
   clearLegacyRecurringStorage,
@@ -37,14 +36,12 @@ import { DEFAULT_EXPENSE_CATEGORIES, STORAGE_CATEGORIES_KEY } from "./constants/
 import type {
   ProfileIdentity,
   NyxPlan,
-  RecurringExpense,
   NotificationSettings,
   ExpenseCategory,
 } from "./types";
 
 const STORAGE_IDENTITY = "nyx_profile_identity";
 const STORAGE_NOTIFICATIONS = "nyx_notification_settings";
-const DEFAULT_CAT_ID = DEFAULT_EXPENSE_CATEGORIES[0]?.id ?? "outros";
 
 function loadJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -69,6 +66,7 @@ export function ProfileScreen() {
   const profile = useProfile();
   const toast = useToast();
   const router = useRouter();
+  const { openRecurringBills, isOpen: recurringUiOpen } = useRecurringBillsUI();
   const [identity, setIdentity] = useState<ProfileIdentity>(MOCK_PROFILE_IDENTITY);
   const [categories, setCategories] = useState<ExpenseCategory[]>(DEFAULT_EXPENSE_CATEGORIES);
   const recurringApi = useRecurringBills(!!user?.id);
@@ -77,8 +75,8 @@ export function ProfileScreen() {
   );
   const [plan] = useState<NyxPlan>("free");
   const [identitySaving, setIdentitySaving] = useState(false);
-  const [recurringDrawerOpen, setRecurringDrawerOpen] = useState(false);
   const legacyMigratedRef = useRef(false);
+  const wasRecurringUiOpen = useRef(false);
 
   useEffect(() => {
     const loadedIdentity = loadJson(STORAGE_IDENTITY, MOCK_PROFILE_IDENTITY);
@@ -144,6 +142,14 @@ export function ProfileScreen() {
     };
   }, [user?.id, recurringApi.loading, recurringApi.items.length, categories, recurringApi.create, recurringApi.refetch]);
 
+  // Atualiza o preview do perfil quando o drawer compartilhado fecha.
+  useEffect(() => {
+    if (wasRecurringUiOpen.current && !recurringUiOpen) {
+      void recurringApi.refetch();
+    }
+    wasRecurringUiOpen.current = recurringUiOpen;
+  }, [recurringUiOpen, recurringApi]);
+
   const handleIdentityChange = useCallback((v: ProfileIdentity) => {
     setIdentity(v);
   }, []);
@@ -162,79 +168,6 @@ export function ProfileScreen() {
     toast.show("Dados salvos", "success");
     setIdentitySaving(false);
   }, [identity, profile, toast]);
-
-  const handleRecurringAdd = useCallback(
-    async (item: Omit<RecurringExpense, "id">) => {
-      try {
-        await recurringApi.create(profileItemToCreateInput(item, categories));
-        toast.show("Conta recorrente adicionada", "success");
-      } catch (e) {
-        toast.show(
-          e instanceof Error ? e.message : "Não foi possível salvar a conta",
-          "error"
-        );
-      }
-    },
-    [recurringApi, categories, toast]
-  );
-
-  const handleRecurringRemove = useCallback(
-    async (id: string) => {
-      try {
-        await recurringApi.remove(id);
-        toast.show("Conta removida", "success");
-      } catch (e) {
-        toast.show(
-          e instanceof Error ? e.message : "Não foi possível remover",
-          "error"
-        );
-      }
-    },
-    [recurringApi, toast]
-  );
-
-  const handleRecurringUpdate = useCallback(
-    async (id: string, item: Omit<RecurringExpense, "id">) => {
-      try {
-        const input = profileItemToCreateInput(item, categories);
-        await recurringApi.update(id, input);
-        toast.show("Conta atualizada", "success");
-      } catch (e) {
-        toast.show(
-          e instanceof Error ? e.message : "Não foi possível atualizar",
-          "error"
-        );
-      }
-    },
-    [recurringApi, categories, toast]
-  );
-
-  const handleRecurringToggle = useCallback(
-    async (id: string, active: boolean) => {
-      try {
-        await recurringApi.update(id, { active });
-        toast.show(active ? "Conta reativada" : "Conta pausada", "success");
-      } catch (e) {
-        toast.show(
-          e instanceof Error ? e.message : "Não foi possível atualizar o status",
-          "error"
-        );
-      }
-    },
-    [recurringApi, toast]
-  );
-
-  const handleAddCategory = useCallback((category: Omit<ExpenseCategory, "id">) => {
-    const newCat: ExpenseCategory = { ...category, id: generateId() };
-    const defaultIds = new Set(DEFAULT_EXPENSE_CATEGORIES.map((c) => c.id));
-    setCategories((prev) => {
-      const next = [...prev, newCat];
-      const customOnly = next.filter((c) => !defaultIds.has(c.id));
-      saveJson(STORAGE_CATEGORIES_KEY, customOnly);
-      return next;
-    });
-    return newCat;
-  }, []);
 
   const handleNotificationsChange = useCallback((v: NotificationSettings) => {
     setNotifications(v);
@@ -297,21 +230,7 @@ export function ProfileScreen() {
 
           <FinancialOrgSection
             items={recurringForUi}
-            onManage={() => setRecurringDrawerOpen(true)}
-          />
-
-          <RecurringBillsDrawer
-            open={recurringDrawerOpen}
-            onClose={() => setRecurringDrawerOpen(false)}
-            items={recurringForUi}
-            categories={categories}
-            loading={recurringApi.loading}
-            error={recurringApi.error}
-            onAdd={(item) => void handleRecurringAdd(item)}
-            onUpdate={(id, item) => void handleRecurringUpdate(id, item)}
-            onRemove={(id) => void handleRecurringRemove(id)}
-            onToggleActive={(id, active) => void handleRecurringToggle(id, active)}
-            onAddCategory={handleAddCategory}
+            onManage={openRecurringBills}
           />
 
           <SecuritySection />

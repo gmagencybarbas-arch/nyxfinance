@@ -20,8 +20,8 @@ export function NyxAvatarStage({
 
   return (
     <div
-      className={`relative flex h-full min-h-0 w-full items-end overflow-visible ${
-        compact ? "justify-center" : "justify-end"
+      className={`relative flex h-full min-h-0 w-full items-end ${
+        compact ? "justify-center overflow-hidden" : "justify-end overflow-visible"
       } ${className}`}
       data-nyx-visual={state}
     >
@@ -133,22 +133,22 @@ export function NyxAvatarStage({
       <div
         className={`relative z-[1] flex w-full items-end ${
           compact
-            ? "max-h-full justify-center"
+            ? "h-full max-h-full justify-center overflow-hidden"
             : "h-[74%] max-h-[min(78vh,820px)] -translate-y-[200px] justify-end pr-2 pl-[4%]"
         }`}
       >
         <div
           className={`relative ${
             compact
-              ? "mx-auto w-[88%] max-w-[340px]"
+              ? "mx-auto flex h-full max-h-full w-auto max-w-[min(72%,280px)] items-end justify-center"
               : "mr-[-2%] h-full w-[118%] max-w-none -translate-x-[6%]"
           }`}
         >
           <NyxAlphaAvatar
             state={state}
-            scrollShrink={scrollShrink}
+            scrollShrink={compact ? 0 : scrollShrink}
             compact={compact}
-            className="h-full w-full"
+            className="h-full max-h-full w-auto"
           />
 
           {/* Ledge: ~10% acima da base da imagem (segue o sprite) */}

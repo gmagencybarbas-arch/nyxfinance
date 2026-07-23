@@ -154,17 +154,20 @@ export function NyxAlphaAvatar({
 
   return (
     <motion.div
-      className={`relative pointer-events-none select-none ${className}`}
+      className={`relative pointer-events-none select-none ${
+        compact ? "h-full max-h-full w-auto" : ""
+      } ${className}`}
       style={{ opacity: opacityBoost }}
       animate={animate}
       transition={transition}
     >
       <motion.div
         key={pumpKey}
-        className="relative w-full"
+        className={`relative ${compact ? "h-full w-auto" : "w-full"}`}
         style={{
           aspectRatio: `${NYX_SPRITE_WIDTH} / ${NYX_SPRITE_HEIGHT}`,
           transformOrigin: "50% 100%",
+          ...(compact ? { maxHeight: "100%", width: "auto", height: "100%" } : null),
         }}
         initial={false}
         animate={

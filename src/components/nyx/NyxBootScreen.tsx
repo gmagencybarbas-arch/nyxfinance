@@ -52,7 +52,7 @@ export function NyxBootScreen({
 
   return (
     <div
-      className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-6 bg-[var(--background)] px-8"
+      className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-6 bg-[var(--background)] px-8"
       role="status"
       aria-live="polite"
       aria-label="Ligando motores da Nyx"

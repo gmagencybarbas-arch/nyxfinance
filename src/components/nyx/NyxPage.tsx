@@ -163,7 +163,6 @@ export function NyxPage() {
   const prevVisualRef = useRef<NyxVisualState>("master");
 
   const [nyxState, setNyxState] = useState<NyxState>("idle");
-  const [chatScrollOffset, setChatScrollOffset] = useState(0);
   const [messages, setMessages] = useState<ChatMessageType[]>(() => []);
   const [isTypingDraft, setIsTypingDraft] = useState(false);
   const [pendingTransaction, setPendingTransaction] = useState<ParsedTransaction | null>(null);
@@ -181,7 +180,45 @@ export function NyxPage() {
   const installmentCommitmentRef = useRef<ParsedTransaction | null>(null);
   const [showCommitmentButtons, setShowCommitmentButtons] = useState(false);
 
-  const scrollShrink = isMobile ? Math.min(1, chatScrollOffset / 160) : 0;
+  // Mobile: documento nunca rola — só a área do chat.
+  useEffect(() => {
+    if (!isMobile) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prev = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      htmlOverscroll: html.style.overscrollBehavior,
+      bodyOverscroll: body.style.overscrollBehavior,
+      bodyPosition: body.style.position,
+      bodyWidth: body.style.width,
+      bodyTop: body.style.top,
+      bodyLeft: body.style.left,
+      bodyRight: body.style.right,
+      scrollY: window.scrollY,
+    };
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    html.style.overscrollBehavior = "none";
+    body.style.overscrollBehavior = "none";
+    body.style.position = "fixed";
+    body.style.width = "100%";
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.top = `-${prev.scrollY}px`;
+    return () => {
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+      html.style.overscrollBehavior = prev.htmlOverscroll;
+      body.style.overscrollBehavior = prev.bodyOverscroll;
+      body.style.position = prev.bodyPosition;
+      body.style.width = prev.bodyWidth;
+      body.style.left = prev.bodyLeft;
+      body.style.right = prev.bodyRight;
+      body.style.top = prev.bodyTop;
+      window.scrollTo(0, prev.scrollY);
+    };
+  }, [isMobile]);
 
   const addNyxResponse = useCallback(
     (content: string, opts?: { quiet?: boolean }) => {
@@ -896,7 +933,7 @@ export function NyxPage() {
   return (
     <div
       className={`relative flex min-h-0 flex-col overflow-hidden ${
-        isMobile ? "h-full" : "h-[calc(100dvh-3.5rem)]"
+        isMobile ? "md:relative" : "h-[calc(100dvh-3.5rem)]"
       }`}
       data-nyx-visual={visualState}
       onPointerDownCapture={() => {
@@ -925,38 +962,40 @@ export function NyxPage() {
       />
 
       {isMobile ? (
-        <>
-          {/* 1. Personagem compacta */}
-          <header className="relative z-20 h-[22dvh] max-h-[168px] min-h-[112px] shrink-0 overflow-hidden">
-            <div className="absolute right-3 top-2 z-30">
+        <div className="fixed inset-0 z-30 flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden bg-[var(--background)]">
+          {/* 1. Personagem — shrink-0, sprite inteira (object-contain) */}
+          <header className="relative h-[min(32dvh,260px)] min-h-[140px] w-full max-w-full shrink-0 overflow-hidden">
+            <div className="absolute right-3 top-[max(0.5rem,env(safe-area-inset-top))] z-30">
               <NyxSoundToggle enabled={soundEnabled} onChange={setSoundEnabled} />
             </div>
             <NyxAvatarStage
               state={visualState}
-              scrollShrink={scrollShrink}
               compact
-              className="h-full translate-y-2"
+              className="h-full w-full"
             />
           </header>
 
-          {/* 2–3. Conversa rolável + composer fixo no fluxo */}
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden rounded-t-2xl border-t border-white/[0.06] bg-[var(--background)]/70">
+          {/* 2. Única área rolável */}
+          <section className="relative min-h-0 min-w-0 flex-1 overflow-hidden border-t border-white/[0.06] bg-[var(--background)]/80">
             <NyxChat
               messages={messages}
               isThinking={nyxState === "thinking"}
-              className="min-h-0 flex-1"
-              onScrollOffset={setChatScrollOffset}
+              className="h-full min-h-0"
               onShortcutSelect={handleShortcutSelect}
               scrollFooter={scrollFooter}
             />
-            <div className="shrink-0 border-t border-white/[0.04] bg-[var(--background)]/90 px-0 pb-2 pt-2 backdrop-blur-sm">
-              {composer}
-            </div>
+          </section>
+
+          {/* 3. Composer preso ao shell */}
+          <div className="w-full max-w-full shrink-0 border-t border-white/[0.04] bg-[var(--background)]">
+            {composer}
           </div>
 
-          {/* 4. Bottom nav no shell (não fixed) */}
-          <BottomNav variant="inline" />
-        </>
+          {/* 4. Bottom nav preso ao shell */}
+          <div className="w-full max-w-full shrink-0">
+            <BottomNav variant="inline" />
+          </div>
+        </div>
       ) : (
         <div className="relative z-10 flex min-h-0 flex-1 flex-row">
           <div className="relative flex min-h-0 min-w-0 w-[58%] max-w-[58%] flex-col">
@@ -973,7 +1012,6 @@ export function NyxPage() {
                 messages={messages}
                 isThinking={nyxState === "thinking"}
                 className="min-h-0 flex-1"
-                onScrollOffset={setChatScrollOffset}
                 onShortcutSelect={handleShortcutSelect}
                 scrollFooter={scrollFooter}
               />
@@ -983,7 +1021,7 @@ export function NyxPage() {
             </div>
           </div>
 
-          <div className="relative w-[42%] max-w-[42%] shrink-0 self-stretch overflow-visible">
+          <div className="relative w-[42%] max-w-[42%] shrink-0 self-stretch overflow-hidden">
             <div
               className="pointer-events-none absolute inset-y-0 left-0 z-10 w-28"
               style={{

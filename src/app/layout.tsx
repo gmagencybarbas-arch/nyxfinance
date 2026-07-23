@@ -6,6 +6,8 @@ import { ProfileProvider } from "@/contexts/ProfileContext";
 import { AssistantProvider } from "@/contexts/AssistantContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { ToastProvider } from "@/contexts/ToastContext";
+import { RecurringBillsUIProvider } from "@/contexts/RecurringBillsUIContext";
+import { MobileMenuProvider } from "@/contexts/MobileMenuContext";
 import { TapSoundProvider } from "@/components/TapSoundProvider";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { ThemeScript } from "@/components/ThemeScript";
@@ -44,10 +46,14 @@ export default function RootLayout({
             <ThemeProvider>
               <ToastProvider>
                 <AssistantProvider>
-                  <TapSoundProvider>
-                    <MainShell>{children}</MainShell>
-                    <BottomNav />
-                  </TapSoundProvider>
+                  <RecurringBillsUIProvider>
+                    <MobileMenuProvider>
+                      <TapSoundProvider>
+                        <MainShell>{children}</MainShell>
+                        <BottomNav />
+                      </TapSoundProvider>
+                    </MobileMenuProvider>
+                  </RecurringBillsUIProvider>
                 </AssistantProvider>
               </ToastProvider>
             </ThemeProvider>

@@ -7,16 +7,33 @@ import {
   Store,
   MessageCircle,
   User,
-  CalendarRange,
+  Menu,
   Map,
 } from "lucide-react";
+import { useMobileMenuOptional } from "@/contexts/MobileMenuContext";
 
-const ITEMS = [
-  { href: "/planejamento", icon: CalendarRange, label: "Plano" },
-  { href: "/jornada", icon: Map, label: "Jornada" },
-  { href: "/nyx", icon: MessageCircle, label: "Nyx", isCenter: true },
-  { href: "/loja", icon: Store, label: "Loja" },
-  { href: "/profile", icon: User, label: "Perfil" },
+type NavRouteItem = {
+  kind: "route";
+  href: string;
+  icon: typeof Map;
+  label: string;
+  isCenter?: boolean;
+};
+
+type NavMenuItem = {
+  kind: "menu";
+  icon: typeof Menu;
+  label: string;
+};
+
+type NavItem = NavRouteItem | NavMenuItem;
+
+const ITEMS: NavItem[] = [
+  { kind: "menu", icon: Menu, label: "Menu" },
+  { kind: "route", href: "/jornada", icon: Map, label: "Jornada" },
+  { kind: "route", href: "/nyx", icon: MessageCircle, label: "Nyx", isCenter: true },
+  { kind: "route", href: "/loja", icon: Store, label: "Loja" },
+  { kind: "route", href: "/profile", icon: User, label: "Perfil" },
 ];
 
 const HIDDEN_PATHS = ["/login", "/register", "/auth", "/onboarding"];
@@ -28,7 +45,9 @@ type BottomNavProps = {
 
 export function BottomNav({ variant = "fixed" }: BottomNavProps) {
   const pathname = usePathname();
+  const mobileMenu = useMobileMenuOptional();
   const isHidden = HIDDEN_PATHS.some((p) => pathname.startsWith(p));
+  const menuOpen = mobileMenu?.isOpen ?? false;
 
   // No chat mobile o nav entra no shell da página (inline), não no fixed global.
   if (variant === "fixed" && (isHidden || pathname === "/nyx")) return null;
@@ -46,15 +65,63 @@ export function BottomNav({ variant = "fixed" }: BottomNavProps) {
       aria-label="Navegação principal"
     >
       <motion.div
-        className={`mx-4 rounded-2xl border border-white/[0.06] bg-[var(--background-secondary)]/90 backdrop-blur-xl shadow-[0_0_24px_rgba(167,139,250,0.05)] ${
+        className={`mx-4 min-w-0 max-w-full rounded-2xl border border-white/[0.06] bg-[var(--background-secondary)]/90 backdrop-blur-xl shadow-[0_0_24px_rgba(167,139,250,0.05)] box-border ${
           variant === "fixed" ? "mb-2" : "mb-1.5 mt-1"
         }`}
         initial={variant === "fixed" ? { y: 24, opacity: 0 } : false}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
       >
-        <div className="flex items-center justify-around h-16 px-2">
+        <div className="flex h-16 min-w-0 items-center justify-around px-2">
           {ITEMS.map((item) => {
+            if (item.kind === "menu") {
+              const Icon = item.icon;
+              const isActive = menuOpen;
+              return (
+                <div key="menu" className="flex flex-1 justify-center">
+                  <motion.button
+                    ref={(node) => {
+                      if (mobileMenu) mobileMenu.menuButtonRef.current = node;
+                    }}
+                    type="button"
+                    aria-label="Abrir menu"
+                    aria-expanded={menuOpen}
+                    aria-haspopup="dialog"
+                    onClick={() => mobileMenu?.toggleMenu()}
+                    className="relative flex min-w-[48px] flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-2"
+                    whileTap={{ scale: 0.9 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                  >
+                    <Icon
+                      className={`h-5 w-5 transition-all duration-200 ${
+                        isActive
+                          ? "text-[var(--nyx-gradient-start)] drop-shadow-[0_0_8px_rgba(167,139,250,0.5)]"
+                          : "text-[var(--muted-foreground)]"
+                      }`}
+                      strokeWidth={isActive ? 2.5 : 2}
+                    />
+                    <span
+                      className={`text-[10px] font-medium transition-colors ${
+                        isActive
+                          ? "text-[var(--nyx-gradient-start)]"
+                          : "text-[var(--muted-foreground)]"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                    {isActive && (
+                      <motion.div
+                        className="absolute -bottom-0.5 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-gradient-to-r from-[var(--nyx-gradient-start)] to-[var(--nyx-gradient-end)]"
+                        layoutId="nav-glow"
+                        initial={false}
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                  </motion.button>
+                </div>
+              );
+            }
+
             const isActive =
               item.href === "/nyx"
                 ? pathname === "/nyx"
@@ -65,7 +132,7 @@ export function BottomNav({ variant = "fixed" }: BottomNavProps) {
               return (
                 <Link key={item.href} href={item.href} className="relative -mt-7">
                   <motion.div
-                    className="relative flex flex-col items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--nyx-gradient-start)] to-[var(--nyx-gradient-end)] shadow-[0_0_20px_rgba(167,139,250,0.3),0_0_40px_rgba(34,197,94,0.1)]"
+                    className="relative flex h-14 w-14 flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--nyx-gradient-start)] to-[var(--nyx-gradient-end)] shadow-[0_0_20px_rgba(167,139,250,0.3),0_0_40px_rgba(34,197,94,0.1)]"
                     whileHover={{ scale: 1.06, y: -2 }}
                     whileTap={{ scale: 0.94 }}
                     animate={
@@ -86,7 +153,7 @@ export function BottomNav({ variant = "fixed" }: BottomNavProps) {
                     }}
                   >
                     <motion.div
-                      className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-white/80"
+                      className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-white/80"
                       animate={{
                         opacity: [0.5, 1, 0.5],
                         scale: [1, 1.2, 1],
@@ -97,21 +164,21 @@ export function BottomNav({ variant = "fixed" }: BottomNavProps) {
                         ease: "easeInOut",
                       }}
                     />
-                    <Icon className="relative w-6 h-6 text-white" strokeWidth={2} />
+                    <Icon className="relative h-6 w-6 text-white" strokeWidth={2} />
                   </motion.div>
                 </Link>
               );
             }
 
             return (
-              <Link key={item.href} href={item.href} className="flex-1 flex justify-center">
+              <Link key={item.href} href={item.href} className="flex flex-1 justify-center">
                 <motion.div
-                  className="relative flex flex-col items-center justify-center gap-0.5 py-2 px-3 rounded-xl min-w-[48px]"
+                  className="relative flex min-w-[48px] flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-2"
                   whileTap={{ scale: 0.9 }}
                   transition={{ type: "spring", stiffness: 400, damping: 20 }}
                 >
                   <Icon
-                    className={`w-5 h-5 transition-all duration-200 ${
+                    className={`h-5 w-5 transition-all duration-200 ${
                       isActive
                         ? "text-[var(--nyx-gradient-start)] drop-shadow-[0_0_8px_rgba(167,139,250,0.5)]"
                         : "text-[var(--muted-foreground)]"
@@ -120,14 +187,16 @@ export function BottomNav({ variant = "fixed" }: BottomNavProps) {
                   />
                   <span
                     className={`text-[10px] font-medium transition-colors ${
-                      isActive ? "text-[var(--nyx-gradient-start)]" : "text-[var(--muted-foreground)]"
+                      isActive
+                        ? "text-[var(--nyx-gradient-start)]"
+                        : "text-[var(--muted-foreground)]"
                     }`}
                   >
                     {item.label}
                   </span>
-                  {isActive && (
+                  {isActive && !menuOpen && (
                     <motion.div
-                      className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-gradient-to-r from-[var(--nyx-gradient-start)] to-[var(--nyx-gradient-end)]"
+                      className="absolute -bottom-0.5 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-gradient-to-r from-[var(--nyx-gradient-start)] to-[var(--nyx-gradient-end)]"
                       layoutId="nav-glow"
                       initial={false}
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}

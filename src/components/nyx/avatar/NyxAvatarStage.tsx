@@ -150,25 +150,6 @@ export function NyxAvatarStage({
             compact={compact}
             className="h-full max-h-full w-auto"
           />
-
-          {/* Ledge: ~10% acima da base da imagem (segue o sprite) */}
-          {!compact && (
-            <div
-              className="pointer-events-none absolute bottom-[10%] left-[2%] right-[6%] z-[2]"
-              aria-hidden
-            >
-              <div className="h-px w-full bg-gradient-to-r from-transparent via-white/20 to-violet-300/35" />
-              <div
-                className="mt-px h-[3px] w-full rounded-full"
-                style={{
-                  background:
-                    "linear-gradient(90deg, transparent 0%, rgba(20,16,28,0.85) 18%, rgba(30,24,42,0.95) 55%, rgba(167,139,250,0.35) 88%, transparent 100%)",
-                  boxShadow: "0 0 18px rgba(139,92,246,0.22), 0 4px 20px rgba(0,0,0,0.35)",
-                }}
-              />
-              <div className="mx-auto mt-1 h-px w-[55%] bg-gradient-to-r from-transparent via-violet-400/25 to-transparent blur-[1px]" />
-            </div>
-          )}
         </div>
       </div>
 

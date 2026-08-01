@@ -1,6 +1,7 @@
 import type { AudioKey } from "@/lib/assistant/ids";
 import {
   NYX_SOUND_MAP,
+  NYX_THINKING_KEYS,
   type NyxSoundDef,
   type NyxSoundKey,
 } from "@/lib/nyx/audio/nyxSoundMap";
@@ -8,12 +9,17 @@ import {
   EVA_CIGARRO_EXTRA,
   EVA_SOUND_MAP,
   EVA_SUCCESS_EXTRA,
+  EVA_THINKING_KEYS,
 } from "@/lib/assistant/evaSoundMap";
 
 export type CharacterSoundMap = Record<NyxSoundKey, NyxSoundDef>;
 
 export function getCharacterSoundMap(audioKey: AudioKey): CharacterSoundMap {
   return audioKey === "eva" ? EVA_SOUND_MAP : NYX_SOUND_MAP;
+}
+
+export function getThinkingKeys(audioKey: AudioKey): NyxSoundKey[] {
+  return audioKey === "eva" ? EVA_THINKING_KEYS : NYX_THINKING_KEYS;
 }
 
 /** Definições extras só da Eva (sorteio junto com as chaves principais). */

@@ -11,7 +11,6 @@ import { NyxSoundToggle } from "./audio/NyxSoundToggle";
 import { NyxChat } from "./NyxChat";
 import { NyxInput, type NyxInputHandle } from "./NyxInput";
 import type { NyxState, ChatMessageType, ChatAttachment } from "./types";
-import { SIMULATED_RESPONSES } from "./constants";
 import { playMessageSentSound } from "@/lib/sounds/chatSounds";
 import type { NyxVisualState } from "./avatar/types";
 import { handleNyxMessage, stripNyxDialogMeta } from "@/ai/nyxTransactionFlow";
@@ -38,11 +37,18 @@ import { useAssistant } from "@/contexts/AssistantContext";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { NyxBootScreen } from "./NyxBootScreen";
 import type { NyxPendingBatch, NyxAction } from "@/lib/nyx/types";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import { transcribeAudioBlob } from "@/lib/audio/clientTranscribe";
+import type { VoiceUiPhase } from "@/lib/audio/constants";
+import { MIN_AUDIO_BYTES } from "@/lib/audio/constants";
+import {
+  buildAudioInterpretMeta,
+  shouldSkipLocalParserFallback,
+} from "@/lib/audio/audioInterpretBridge";
 
 const TYPING_DELAY_MS_MIN = 400;
 const TYPING_DELAY_MS_MAX = 900;
 const SPEAKING_DURATION_MS = 2500;
-const FALLBACK_RESPONSE_DELAY_MS = 1500 + Math.random() * 1000;
 
 async function waitUntil(deadlineMs: number) {
   const remain = deadlineMs - Date.now();
@@ -172,13 +178,19 @@ export function NyxPage() {
   const [persistingIds, setPersistingIds] = useState<string[]>([]);
   const [savedFlash, setSavedFlash] = useState<NyxSavedFlash[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [voicePhase, setVoicePhase] = useState<VoiceUiPhase>("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const sendingRef = useRef(false);
   const nyxInputRef = useRef<NyxInputHandle>(null);
-  const listeningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceBusyRef = useRef(false);
   const optionalDescRef = useRef<OptionalDescContext | null>(null);
   const [optionalDescUi, setOptionalDescUi] = useState<OptionalDescUi>("none");
   const installmentCommitmentRef = useRef<ParsedTransaction | null>(null);
   const [showCommitmentButtons, setShowCommitmentButtons] = useState(false);
+  const pendingBatchRef = useRef(pendingBatch);
+  pendingBatchRef.current = pendingBatch;
+
+  const voiceRecorder = useVoiceRecorder();
 
   // Mobile: documento nunca rola — só a área do chat.
   useEffect(() => {
@@ -399,13 +411,16 @@ export function NyxPage() {
       if (!pendingBatch || actionIds.length === 0 || persistingBatch) return;
       setPersistingBatch(true);
       setPersistingIds(actionIds);
-      const { holdMs } = prepareThinking();
-      const thinkUntil = Date.now() + holdMs;
+      const prepared = prepareThinking();
+      const { holdMs, waitUntilEnded } = prepared;
       notifyMessageSent();
       setNyxState("thinking");
       const selected = pendingBatch.actions.filter((a) => actionIds.includes(a.actionId));
       const results = await persistNyxActions(selected);
-      await waitUntil(thinkUntil);
+      await Promise.race([
+        waitUntilEnded(),
+        waitUntil(Date.now() + Math.max(holdMs + 2000, 8000)),
+      ]);
       const failed: Record<string, string> = {};
       const okIds: string[] = [];
       for (const r of results) {
@@ -469,12 +484,25 @@ export function NyxPage() {
   }, [addNyxResponse, notifyInteraction, notifySuccess, notifyMessageSent, notifyReviewReady, notifyError, resetToMaster, notifyTypingCleared, notifyTyping]);
 
   const handleSend = useCallback(
-    async (text: string, file?: File) => {
+    async (
+      text: string,
+      file?: File,
+      meta?: {
+        source?: "text" | "audio";
+        recordedAt?: string;
+        locale?: string;
+      }
+    ) => {
       const trimmed = text.trim();
       if (!trimmed && !file) return;
       if (sendingRef.current || persistingBatch) return;
       sendingRef.current = true;
-      
+
+      const fromAudio = meta?.source === "audio";
+      if (!fromAudio) {
+        setVoiceError(null);
+        if (voicePhase === "error") setVoicePhase("idle");
+      }
 
       let attachment: ChatAttachment | undefined;
       if (file) {
@@ -496,179 +524,209 @@ export function NyxPage() {
           content: userContent,
           timestamp: new Date(),
           attachment,
+          fromAudio,
         },
       ]);
       playMessageSentSound();
       setNyxState("thinking");
-      const { holdMs } = prepareThinking();
+      const preparedThinking = prepareThinking();
+      const { holdMs, waitUntilEnded } = preparedThinking;
       notifyMessageSent();
       const thinkUntil = Date.now() + holdMs;
 
       const typingDelay =
         TYPING_DELAY_MS_MIN + Math.random() * (TYPING_DELAY_MS_MAX - TYPING_DELAY_MS_MIN);
 
-      setTimeout(async () => {
-        try {
-          const input = trimmed || (file?.name ?? "");
-          const releaseThinking = () => waitUntil(thinkUntil);
-
-          const opt = optionalDescRef.current;
-          if (opt?.awaitingButtonChoice && !file) {
-            sendingRef.current = false;
-            return;
-          }
-
-          if (showCommitmentButtons && !file) {
-            sendingRef.current = false;
-            return;
-          }
-
-          if (opt && !file && trimmed && opt.awaitingDescriptionLine) {
-            await patchTransactionDescription(opt.transactionId, trimmed);
-            await releaseThinking();
-            finishOptionalDescriptionFlow();
-            addNyxResponse(
-              formatTransactionSummaryCard({
-                ...opt.parsed,
-                description: trimmed,
-              })
-            );
-            setPendingTransaction(null);
-            notifySuccess();
-            return;
-          }
-
-          if (pendingBatch && !file && trimmed) {
-            if (isLocalConfirmAll(trimmed)) {
-              await confirmActionsByIds(pendingBatch.actions.map((a) => a.actionId));
-              return;
-            }
-            if (isLocalCancelAll(trimmed)) {
-              await releaseThinking();
-              handleCancelAllBatch();
-              return;
-            }
-          }
-
+      await new Promise<void>((resolve) => {
+        setTimeout(async () => {
           try {
-            const interpretation = await interpretNyxMessageClient(input, pendingBatch, {
-              userCategories: USER_CATEGORIES,
-            });
-            await releaseThinking();
+            const input = trimmed || (file?.name ?? "");
+            /** Espera o thinking áudio terminar antes de responder em texto. */
+            const waitThinkingAudio = async () => {
+              await Promise.race([
+                waitUntilEnded(),
+                waitUntil(Date.now() + Math.max(holdMs + 2000, 8000)),
+              ]);
+            };
 
-            if (interpretation.intent === "CONFIRM_PENDING_ACTIONS") {
-              const ids =
-                interpretation.actions.length > 0
-                  ? interpretation.actions.map((a) => a.actionId)
-                  : pendingBatch?.actions.map((a) => a.actionId) ?? [];
-              if (interpretation.reply) addNyxResponse(interpretation.reply, { quiet: true });
-              await confirmActionsByIds(ids);
+            const opt = optionalDescRef.current;
+            if (opt?.awaitingButtonChoice && !file) {
+              sendingRef.current = false;
+              resolve();
+              return;
+            }
+
+            if (showCommitmentButtons && !file) {
+              sendingRef.current = false;
+              resolve();
+              return;
+            }
+
+            if (opt && !file && trimmed && opt.awaitingDescriptionLine) {
+              await patchTransactionDescription(opt.transactionId, trimmed);
+              await waitThinkingAudio();
+              finishOptionalDescriptionFlow();
+              addNyxResponse(
+                formatTransactionSummaryCard({
+                  ...opt.parsed,
+                  description: trimmed,
+                })
+              );
+              setPendingTransaction(null);
+              notifySuccess();
+              return;
+            }
+
+            if (pendingBatchRef.current && !file && trimmed) {
+              if (isLocalConfirmAll(trimmed)) {
+                await confirmActionsByIds(
+                  pendingBatchRef.current.actions.map((a) => a.actionId)
+                );
+                return;
+              }
+              if (isLocalCancelAll(trimmed)) {
+                await waitThinkingAudio();
+                handleCancelAllBatch();
+                return;
+              }
+            }
+
+            try {
+              const batchNow = pendingBatchRef.current;
+              const interpretation = await interpretNyxMessageClient(input, batchNow, {
+                userCategories: USER_CATEGORIES,
+                source: fromAudio ? "audio" : "text",
+                transcript: fromAudio ? input : undefined,
+                recordedAt: meta?.recordedAt,
+                locale: meta?.locale ?? "pt-BR",
+              });
+              await waitThinkingAudio();
+
+              if (interpretation.intent === "CONFIRM_PENDING_ACTIONS") {
+                const ids =
+                  interpretation.actions.length > 0
+                    ? interpretation.actions.map((a) => a.actionId)
+                    : batchNow?.actions.map((a) => a.actionId) ?? [];
+                if (interpretation.reply) addNyxResponse(interpretation.reply, { quiet: true });
+                await confirmActionsByIds(ids);
+                if (interpretation.pendingBatch) {
+                  setPendingBatch(interpretation.pendingBatch);
+                  notifyReviewReady();
+                }
+                return;
+              }
+
+              if (interpretation.intent === "CANCEL_PENDING_ACTIONS") {
+                setPendingBatch(null);
+                setFailedActionIds({});
+                resetToMaster();
+                addNyxResponse(interpretation.reply || "Beleza, cancelei.");
+                return;
+              }
+
+              if (
+                interpretation.requiresConfirmation &&
+                interpretation.pendingBatch &&
+                interpretation.pendingBatch.actions.length > 0
+              ) {
+                setPendingBatch(interpretation.pendingBatch);
+                setFailedActionIds({});
+                setPendingTransaction(null);
+                notifyReviewReady();
+                addNyxResponse(interpretation.reply);
+                return;
+              }
+
               if (interpretation.pendingBatch) {
                 setPendingBatch(interpretation.pendingBatch);
-                notifyReviewReady();
+                if (interpretation.pendingBatch.actions.length) {
+                  notifyReviewReady();
+                } else {
+                  resetToMaster();
+                }
+              } else if (!batchNow) {
+                setPendingBatch(null);
               }
-              return;
-            }
 
-            if (interpretation.intent === "CANCEL_PENDING_ACTIONS") {
-              setPendingBatch(null);
-              setFailedActionIds({});
-              resetToMaster();
-              addNyxResponse(interpretation.reply || "Beleza, cancelei.");
-              return;
-            }
-
-            if (
-              interpretation.requiresConfirmation &&
-              interpretation.pendingBatch &&
-              interpretation.pendingBatch.actions.length > 0
-            ) {
-              setPendingBatch(interpretation.pendingBatch);
-              setFailedActionIds({});
-              setPendingTransaction(null);
-              notifyReviewReady();
               addNyxResponse(interpretation.reply);
-              return;
-            }
-
-            if (interpretation.pendingBatch) {
-              setPendingBatch(interpretation.pendingBatch);
-              if (interpretation.pendingBatch.actions.length) {
-                notifyReviewReady();
-              } else {
+              if (!interpretation.pendingBatch?.actions.length) {
                 resetToMaster();
               }
-            } else if (!pendingBatch) {
-              setPendingBatch(null);
+              return;
+            } catch (smartErr) {
+              console.error("interpretNyxMessageClient", smartErr);
+              if (shouldSkipLocalParserFallback(fromAudio ? "audio" : "text")) {
+                await waitThinkingAudio();
+                notifyError();
+                resetToMaster();
+                addNyxResponse(
+                  "Não consegui interpretar o áudio. Tenta de novo?",
+                  { quiet: true }
+                );
+                return;
+              }
+              // Texto: continua no parser local abaixo — não deixa o chat preso
             }
 
-            addNyxResponse(interpretation.reply);
-            if (!interpretation.pendingBatch?.actions.length) {
-              resetToMaster();
-            }
-            return;
-          } catch (smartErr) {
-            console.error("interpretNyxMessageClient", smartErr);
-            // Continua no parser local abaixo — não deixa o chat preso
-          }
-
-          try {
-            const flow = await handleNyxMessage(input, USER_CATEGORIES, pendingTransaction, {
-              userDisplayName: displayName,
-            });
-            await releaseThinking();
-            if (
-              flow.state === "awaiting_confirmation" ||
-              flow.state === "awaiting_installment_first_due" ||
-              flow.state === "awaiting_installment_amount" ||
-              flow.state === "awaiting_installment_count" ||
-              flow.state === "awaiting_recurring_choice"
-            ) {
-              setPendingTransaction(flow.parsed ?? null);
-              notifyReviewReady();
-            } else {
-              setPendingTransaction(null);
-            }
-            if (flow.state === "idle" && flow.parsed) {
-              setPendingTransaction(null);
-              addNyxResponse(flow.reply);
-              if (flow.deferInstallmentCommitmentPrompt) {
-                installmentCommitmentRef.current = flow.parsed;
-                addNyxResponse(getInstallmentCommitmentPrompt());
-                setShowCommitmentButtons(true);
+            try {
+              const flow = await handleNyxMessage(input, USER_CATEGORIES, pendingTransaction, {
+                userDisplayName: displayName,
+              });
+              await waitThinkingAudio();
+              if (
+                flow.state === "awaiting_confirmation" ||
+                flow.state === "awaiting_installment_first_due" ||
+                flow.state === "awaiting_installment_amount" ||
+                flow.state === "awaiting_installment_count" ||
+                flow.state === "awaiting_recurring_choice"
+              ) {
+                setPendingTransaction(flow.parsed ?? null);
                 notifyReviewReady();
               } else {
-                const id = await persistTransaction(flow.parsed);
-                beginOptionalDescriptionUi(id, stripNyxDialogMeta(flow.parsed));
-                notifySuccess();
+                setPendingTransaction(null);
               }
-            } else {
-              addNyxResponse(flow.reply || "Não entendi esse. Tenta tipo: café 15 hoje");
+              if (flow.state === "idle" && flow.parsed) {
+                setPendingTransaction(null);
+                addNyxResponse(flow.reply);
+                if (flow.deferInstallmentCommitmentPrompt) {
+                  installmentCommitmentRef.current = flow.parsed;
+                  addNyxResponse(getInstallmentCommitmentPrompt());
+                  setShowCommitmentButtons(true);
+                  notifyReviewReady();
+                } else {
+                  const id = await persistTransaction(flow.parsed);
+                  beginOptionalDescriptionUi(id, stripNyxDialogMeta(flow.parsed));
+                  notifySuccess();
+                }
+              } else {
+                addNyxResponse(flow.reply || "Não entendi esse. Tenta tipo: café 15 hoje");
+              }
+            } catch (localErr) {
+              console.error("handleNyxMessage fallback", localErr);
+              await waitThinkingAudio();
+              notifyError();
+              addNyxResponse(
+                "Não consegui processar agora. Tenta de novo? Ex: café 15 hoje",
+                { quiet: true }
+              );
             }
-          } catch (localErr) {
-            console.error("handleNyxMessage fallback", localErr);
-            await releaseThinking();
+          } catch (e) {
+            console.error("handleSend", e);
+            await waitUntil(thinkUntil);
             notifyError();
-            addNyxResponse(
-              "Não consegui processar agora. Tenta de novo? Ex: café 15 hoje",
-              { quiet: true }
-            );
+            addNyxResponse("Algo deu errado. Tenta de novo?", { quiet: true });
+            setPendingTransaction(null);
+            optionalDescRef.current = null;
+            setOptionalDescUi("none");
+            installmentCommitmentRef.current = null;
+            setShowCommitmentButtons(false);
+          } finally {
+            finishSpeaking();
+            sendingRef.current = false;
+            resolve();
           }
-        } catch (e) {
-          console.error("handleSend", e);
-          await waitUntil(thinkUntil);
-          notifyError();
-          addNyxResponse("Algo deu errado. Tenta de novo?", { quiet: true });
-          setPendingTransaction(null);
-          optionalDescRef.current = null;
-          setOptionalDescUi("none");
-          installmentCommitmentRef.current = null;
-          setShowCommitmentButtons(false);
-        } finally {
-          finishSpeaking();
-          sendingRef.current = false;
-        }
-      }, typingDelay);
+        }, typingDelay);
+      });
     },
     [
       addNyxResponse,
@@ -685,62 +743,154 @@ export function NyxPage() {
       persistingBatch,
       finishSpeaking,
       prepareThinking,
+      voicePhase,
       notifyInteraction, notifySuccess, notifyMessageSent, notifyReviewReady, notifyError, resetToMaster, notifyTypingCleared, notifyTyping,
     ]
   );
 
-  const handleMicToggle = useCallback(() => {
+  const voiceUiBlocked =
+    optionalDescUi === "choose" ||
+    optionalDescUi === "typing_description" ||
+    showCommitmentButtons;
+
+  const handleMicStart = useCallback(async () => {
     notifyInteraction();
-    if (
-      optionalDescUi === "choose" ||
-      optionalDescUi === "typing_description" ||
-      showCommitmentButtons
-    ) {
+    if (voiceUiBlocked || voiceBusyRef.current || sendingRef.current || persistingBatch) {
       return;
     }
-    if (isListening) {
-      setIsListening(false);
-      setNyxState("idle");
-      if (listeningTimeoutRef.current) clearTimeout(listeningTimeoutRef.current);
-      return;
-    }
+    setVoiceError(null);
+    setVoicePhase("requesting_permission");
     setIsListening(true);
     setNyxState("listening");
-    notifyTyping();
-    const t = setTimeout(() => {
+    try {
+      await voiceRecorder.start();
+      setVoicePhase("recording");
+    } catch {
       setIsListening(false);
-      setNyxState("thinking");
-      const { holdMs } = prepareThinking();
-      notifyMessageSent();
-      const fakeTranscript = "O que você pode fazer por mim?";
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: generateId(),
-          role: "user",
-          content: fakeTranscript,
-          timestamp: new Date(),
-        },
-      ]);
-      setTimeout(() => {
-        addNyxResponse(
-          SIMULATED_RESPONSES[Math.floor(Math.random() * SIMULATED_RESPONSES.length)]
-        );
-        setNyxState("speaking");
-        resetToMaster();
-        setTimeout(() => setNyxState("idle"), SPEAKING_DURATION_MS);
-      }, Math.max(FALLBACK_RESPONSE_DELAY_MS, holdMs));
-    }, 3000);
-    listeningTimeoutRef.current = t;
+      setNyxState("idle");
+      setVoicePhase("error");
+      setVoiceError("Não consegui abrir o microfone.");
+    }
   }, [
-    isListening,
-    addNyxResponse,
-    optionalDescUi,
-    showCommitmentButtons,
-    notifyInteraction, notifySuccess, notifyMessageSent, notifyReviewReady, notifyError, resetToMaster, notifyTypingCleared, notifyTyping, prepareThinking,
+    voiceUiBlocked,
+    persistingBatch,
+    voiceRecorder,
+    notifyInteraction,
   ]);
 
-  const isBusy = nyxState === "thinking" || nyxState === "listening" || persistingBatch;
+  const handleVoiceCancel = useCallback(() => {
+    notifyInteraction();
+    voiceBusyRef.current = false;
+    voiceRecorder.cancel();
+    setIsListening(false);
+    setVoicePhase("idle");
+    setVoiceError(null);
+    setNyxState("idle");
+    resetToMaster();
+  }, [voiceRecorder, notifyInteraction, resetToMaster]);
+
+  const handleVoiceSend = useCallback(async () => {
+    notifyInteraction();
+    if (voiceBusyRef.current || voiceUiBlocked) return;
+    voiceBusyRef.current = true;
+    setIsListening(false);
+
+    const recordedAt = new Date().toISOString();
+    let blob: Blob | null = null;
+    try {
+      blob = await voiceRecorder.stop();
+    } catch {
+      voiceBusyRef.current = false;
+      setVoicePhase("error");
+      setVoiceError("Não consegui finalizar a gravação.");
+      setNyxState("idle");
+      return;
+    }
+
+    if (!blob || blob.size < MIN_AUDIO_BYTES) {
+      voiceBusyRef.current = false;
+      setVoicePhase("error");
+      setVoiceError(voiceRecorder.error || "Áudio vazio ou muito curto.");
+      setNyxState("idle");
+      return;
+    }
+
+    const mimeType = blob.type || voiceRecorder.mimeType || "audio/webm";
+
+    try {
+      setVoicePhase("uploading");
+      setNyxState("thinking");
+      setVoicePhase("transcribing");
+      const { transcript, locale } = await transcribeAudioBlob(blob, {
+        mimeType,
+        recordedAt,
+      });
+      // Libera referência ao blob o quanto antes (stream já foi parado no recorder).
+      blob = null;
+
+      const meta = buildAudioInterpretMeta(transcript, { recordedAt, locale });
+      setVoicePhase("interpreting");
+      await handleSend(meta.transcript, undefined, meta);
+
+      setVoicePhase("idle");
+      setVoiceError(null);
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Falha ao processar o áudio.";
+      setVoicePhase("error");
+      setVoiceError(msg);
+      setNyxState("idle");
+      notifyError();
+      addNyxResponse(`Não consegui usar o áudio: ${msg}`);
+    } finally {
+      blob = null;
+      voiceBusyRef.current = false;
+    }
+  }, [
+    voiceUiBlocked,
+    voiceRecorder,
+    handleSend,
+    notifyInteraction,
+    notifyError,
+    addNyxResponse,
+  ]);
+
+  // Sincroniza fase pronta para confirmação quando o batch chega via áudio/texto.
+  useEffect(() => {
+    if (
+      pendingBatch &&
+      pendingBatch.actions.length > 0 &&
+      (voicePhase === "interpreting" || voicePhase === "ready_for_confirmation")
+    ) {
+      setVoicePhase("ready_for_confirmation");
+    }
+    if (!pendingBatch && voicePhase === "ready_for_confirmation") {
+      setVoicePhase("idle");
+    }
+  }, [pendingBatch, voicePhase]);
+
+  // Espelha erros do MediaRecorder.
+  useEffect(() => {
+    if (voiceRecorder.state === "error" && voiceRecorder.error) {
+      setVoicePhase("error");
+      setVoiceError(voiceRecorder.error);
+      setIsListening(false);
+      setNyxState("idle");
+    }
+    if (voiceRecorder.state === "recording") {
+      setVoicePhase("recording");
+      setIsListening(true);
+    }
+  }, [voiceRecorder.state, voiceRecorder.error]);
+
+  const isBusy =
+    nyxState === "thinking" ||
+    nyxState === "listening" ||
+    persistingBatch ||
+    voicePhase === "uploading" ||
+    voicePhase === "transcribing" ||
+    voicePhase === "interpreting" ||
+    voicePhase === "requesting_permission";
   const chatLocked = optionalDescUi === "choose" || showCommitmentButtons;
 
   useEffect(() => {
@@ -912,8 +1062,12 @@ export function NyxPage() {
       size={isMobile ? "default" : "large"}
       companionHint={companionHint}
       onSend={handleSend}
-      onMicToggle={handleMicToggle}
-      isListening={isListening}
+      onMicStart={() => void handleMicStart()}
+      onVoiceCancel={handleVoiceCancel}
+      onVoiceSend={() => void handleVoiceSend()}
+      voicePhase={voicePhase}
+      voiceElapsedMs={voiceRecorder.elapsedMs}
+      voiceError={voiceError}
       disabled={isBusy}
       chatLocked={chatLocked}
       descriptionTypingOnly={optionalDescUi === "typing_description"}

@@ -71,6 +71,12 @@ export async function POST(request: NextRequest) {
         : [],
       pendingBatch,
       personalityKey,
+      source: body.source === "audio" ? "audio" : "text",
+      transcript:
+        typeof body.transcript === "string" ? body.transcript : undefined,
+      recordedAt:
+        typeof body.recordedAt === "string" ? body.recordedAt : undefined,
+      locale: typeof body.locale === "string" ? body.locale : "pt-BR",
     };
 
     const interpretation = await interpretNyxMessage(input);

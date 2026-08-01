@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CHARACTER_IDS, SKIN_IDS } from "../ids";
 import { resolveUnlockedIds } from "../unlockResolution";
-import { getCharacterSoundMap } from "../soundMaps";
+import { getCharacterSoundMap, getThinkingKeys } from "../soundMaps";
 import { EVA_SOUND_MAP } from "../evaSoundMap";
 import { NYX_SOUND_MAP } from "@/lib/nyx/audio/nyxSoundMap";
 import { getPersonalityConfig } from "../personalityConfig";
@@ -50,9 +50,15 @@ describe("sound maps", () => {
     const nyx = getCharacterSoundMap("nyx");
     expect(eva).toBe(EVA_SOUND_MAP);
     expect(nyx).toBe(NYX_SOUND_MAP);
-    expect(eva.thinkingShort.src).toContain("/eva/sounds/");
+    expect(eva.thinkingShort.src).toContain("/eva/sounds/eva_thinking_audio");
+    expect(nyx.thinkingShort.src).toContain("/nyx/sounds/nyx_thinking_audio");
     expect(eva.thinkingShort.src).not.toBe(nyx.thinkingShort.src);
     expect(eva.successA.fileName).toMatch(/^eva_/);
+  });
+
+  it("Nyx tem 8 thinking e Eva tem 6 (0–5)", () => {
+    expect(getThinkingKeys("nyx")).toHaveLength(8);
+    expect(getThinkingKeys("eva")).toHaveLength(6);
   });
 });
 

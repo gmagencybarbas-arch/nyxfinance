@@ -83,6 +83,12 @@ export type NyxInterpretRequest = {
   pendingBatch: NyxPendingBatch | null;
   /** Personalidade da personagem ativa (nunca vem da skin). */
   personalityKey?: "nyx" | "eva";
+  /** Origem da entrada (texto digitado ou transcrição de áudio). */
+  source?: "text" | "audio";
+  /** Texto transcrito quando source === "audio" (igual a message). */
+  transcript?: string;
+  recordedAt?: string;
+  locale?: string;
 };
 
 export type NyxVisualState =

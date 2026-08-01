@@ -37,6 +37,7 @@ export function useNyxAssetPreload() {
   const startedForRef = useRef<string | null>(null);
   const lastVisualStateRef = useRef<NyxVisualState | null>(null);
   const thinkingPickRef = useRef<{ skinId: string; src: string } | null>(null);
+  const lastThinkingSrcRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -92,7 +93,13 @@ export function useNyxAssetPreload() {
       const enteringThinking = lastVisualStateRef.current !== "thinking";
       const changedSkin = thinkingPickRef.current?.skinId !== skinId;
       if (enteringThinking || changedSkin || !thinkingPickRef.current) {
-        const src = variants[Math.floor(Math.random() * variants.length)]!;
+        const available =
+          lastThinkingSrcRef.current && variants.length > 1
+            ? variants.filter((v) => v !== lastThinkingSrcRef.current)
+            : variants;
+        const src =
+          available[Math.floor(Math.random() * available.length)] ?? variants[0]!;
+        lastThinkingSrcRef.current = src;
         thinkingPickRef.current = { skinId, src };
       }
       lastVisualStateRef.current = state;

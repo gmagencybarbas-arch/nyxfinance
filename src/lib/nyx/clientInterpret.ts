@@ -7,13 +7,24 @@ import type {
 const INTERPRET_TIMEOUT_MS = 25_000;
 
 /**
- * Função única no cliente: texto digitado OU futura transcrição de áudio.
+ * Função única no cliente: texto digitado OU transcrição de áudio.
  * Timeout evita travar o chat se a API não responder.
  */
 export async function interpretNyxMessage(
   text: string,
   pendingBatch: NyxPendingBatch | null,
-  extras?: Partial<Pick<NyxInterpretRequest, "currentDate" | "timezone" | "userCategories">>
+  extras?: Partial<
+    Pick<
+      NyxInterpretRequest,
+      | "currentDate"
+      | "timezone"
+      | "userCategories"
+      | "source"
+      | "transcript"
+      | "recordedAt"
+      | "locale"
+    >
+  >
 ): Promise<NyxInterpretation> {
   const timezone =
     extras?.timezone ??
@@ -35,6 +46,10 @@ export async function interpretNyxMessage(
         timezone,
         userCategories: extras?.userCategories ?? [],
         pendingBatch,
+        source: extras?.source ?? "text",
+        transcript: extras?.transcript,
+        recordedAt: extras?.recordedAt,
+        locale: extras?.locale ?? "pt-BR",
       } satisfies NyxInterpretRequest),
     });
 

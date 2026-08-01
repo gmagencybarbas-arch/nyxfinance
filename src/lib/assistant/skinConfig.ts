@@ -40,6 +40,11 @@ export const SKIN_CONFIG: Record<SkinSlug, SkinRuntimeConfig> = {
       master: "/nyx/master.png",
       typing: "/nyx/typing.png",
       thinking: "/nyx/thinking.png",
+      thinkingVariants: [
+        "/nyx/thinking.png",
+        "/nyx/thinking1.png",
+        "/nyx/thinking2.png",
+      ],
       sucess: "/nyx/sucess.png",
       error: "/nyx/error.png",
       special01: "/nyx/cigarro01.png",

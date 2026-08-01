@@ -39,6 +39,11 @@ export function ChatMessage({ message, index }: ChatMessageProps) {
             Nyx
           </span>
         )}
+        {isUser && message.fromAudio ? (
+          <span className="mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-emerald-400/80">
+            Áudio
+          </span>
+        ) : null}
         {(message.content || attachment) && (
           <>
             {message.content ? (

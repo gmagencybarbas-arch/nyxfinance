@@ -1,22 +1,15 @@
 /**
  * Mapa de microsons da Nyx (ElevenLabs).
  *
- * Arquivos em: public/nyx/sounds/
- *
- * | Arquivo              | Uso                              | rate | volume final | ~duração original | ~efetiva @ rate |
- * |----------------------|----------------------------------|------|--------------|-------------------|-----------------|
- * | thinking-pulse1.mp3  | thinking curto (70%)              | 1.4  | 0.32         | ~3s               | ~2.1s           |
- * | thinking-pulse.mp3   | thinking longo (30%)             | 1.4  | 0.30         | ~11s              | ~7.9s           |
- * | success-chime.mp3    | sucesso (variação A)             | 1.4  | 0.38         | ~11s              | ~7.9s           |
- * | success-chime1.mp3   | sucesso (variação B)             | 1.4  | 0.38         | ~11s              | ~7.9s           |
- * | cigarro.mp3          | idle cigarro (entrada cigarro01) | 1.2  | 0.24         | variável          | /1.2            |
- *
- * Opcionais (fallback silencioso se ausentes):
- * typing-soft.mp3, response-pop.mp3, error-glitch.mp3
+ * Thinking: nyx_thinking_audio0..7 em public/nyx/sounds/
+ * Playback rate >1 acelera a fala (pedido: um pouco mais rápido).
  */
 
 /** Master = 1 → volumes do mapa são o volume FINAL efetivo. */
 export const NYX_SOUND_VOLUME = 1;
+
+/** Aceleração dos thinking (e success). */
+export const NYX_THINKING_PLAYBACK_RATE = 1.55;
 
 export type NyxSoundKey =
   | "thinkingShort"
@@ -24,6 +17,9 @@ export type NyxSoundKey =
   | "thinkingC"
   | "thinkingD"
   | "thinkingE"
+  | "thinkingF"
+  | "thinkingG"
+  | "thinkingH"
   | "successA"
   | "successB"
   | "successC"
@@ -44,37 +40,22 @@ export type NyxSoundDef = {
   fileName: string;
 };
 
+const thinking = (n: number): NyxSoundDef => ({
+  src: `/nyx/sounds/nyx_thinking_audio${n}.mp3`,
+  fileName: `nyx_thinking_audio${n}.mp3`,
+  volume: 0.32,
+  playbackRate: NYX_THINKING_PLAYBACK_RATE,
+});
+
 export const NYX_SOUND_MAP: Record<NyxSoundKey, NyxSoundDef> = {
-  thinkingShort: {
-    src: "/nyx/sounds/thinking-pulse1.mp3",
-    fileName: "thinking-pulse1.mp3",
-    volume: 0.32,
-    playbackRate: 1.4,
-  },
-  thinkingLong: {
-    src: "/nyx/sounds/thinking-pulse.mp3",
-    fileName: "thinking-pulse.mp3",
-    volume: 0.3,
-    playbackRate: 1.4,
-  },
-  thinkingC: {
-    src: "/nyx/sounds/thinking-pulse2.mp3",
-    fileName: "thinking-pulse2.mp3",
-    volume: 0.32,
-    playbackRate: 1.4,
-  },
-  thinkingD: {
-    src: "/nyx/sounds/thinking-pulse3.mp3",
-    fileName: "thinking-pulse3.mp3",
-    volume: 0.32,
-    playbackRate: 1.4,
-  },
-  thinkingE: {
-    src: "/nyx/sounds/thinking-pulse4.mp3",
-    fileName: "thinking-pulse4.mp3",
-    volume: 0.32,
-    playbackRate: 1.4,
-  },
+  thinkingShort: thinking(0),
+  thinkingLong: thinking(1),
+  thinkingC: thinking(2),
+  thinkingD: thinking(3),
+  thinkingE: thinking(4),
+  thinkingF: thinking(5),
+  thinkingG: thinking(6),
+  thinkingH: thinking(7),
   successA: {
     src: "/nyx/sounds/success-chime.mp3",
     fileName: "success-chime.mp3",
@@ -137,6 +118,18 @@ export const NYX_SOUND_MAP: Record<NyxSoundKey, NyxSoundDef> = {
   },
 };
 
+/** Variantes thinking da Nyx (0–7). */
+export const NYX_THINKING_KEYS: NyxSoundKey[] = [
+  "thinkingShort",
+  "thinkingLong",
+  "thinkingC",
+  "thinkingD",
+  "thinkingE",
+  "thinkingF",
+  "thinkingG",
+  "thinkingH",
+];
+
 export const NYX_SOUND_STORAGE_KEY = "nyx_sound_enabled";
 
 /** Throttle do typing-soft (ms). */
@@ -144,11 +137,7 @@ export const NYX_TYPING_SOUND_THROTTLE_MS = 800;
 
 /** Ordem de preload após unlock. */
 export const NYX_SOUND_PRELOAD_ORDER: NyxSoundKey[] = [
-  "thinkingShort",
-  "thinkingLong",
-  "thinkingC",
-  "thinkingD",
-  "thinkingE",
+  ...NYX_THINKING_KEYS,
   "successA",
   "successB",
   "successC",
@@ -160,11 +149,7 @@ export const NYX_SOUND_PRELOAD_ORDER: NyxSoundKey[] = [
 
 /** Canais principais (não sobrepor). Só arquivos reais. */
 export const NYX_MAIN_SOUND_KEYS: NyxSoundKey[] = [
-  "thinkingShort",
-  "thinkingLong",
-  "thinkingC",
-  "thinkingD",
-  "thinkingE",
+  ...NYX_THINKING_KEYS,
   "successA",
   "successB",
   "successC",

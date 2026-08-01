@@ -17,4 +17,6 @@ export type ChatMessageType = {
   content: string;
   timestamp: Date;
   attachment?: ChatAttachment;
+  /** Entrada veio de áudio transcrito. */
+  fromAudio?: boolean;
 };

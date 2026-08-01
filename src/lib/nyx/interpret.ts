@@ -4,12 +4,13 @@ import { NYX_INTERPRETATION_JSON_SCHEMA, nyxInterpretationSchema } from "./schem
 import { normalizeInterpretation, validateActionCompleteness } from "./normalize";
 import { interpretWithDeterministicParser } from "./deterministicFallback";
 import type { NyxInterpretRequest, NyxInterpretation } from "./types";
+import { buildInterpretUserPayload } from "@/lib/audio/audioInterpretBridge";
 
 const MAX_MESSAGE_LENGTH = 2000;
 
 /**
- * Interpretação única (texto ou futura transcrição de áudio).
- * Server-side only.
+ * Interpretação única (texto ou transcrição de áudio).
+ * Server-side only. `source` é só metadado — não entra no prompt da OpenAI.
  */
 export async function interpretNyxMessage(
   input: NyxInterpretRequest
@@ -55,13 +56,17 @@ export async function interpretNyxMessage(
       personalityKey: input.personalityKey ?? "nyx",
     });
 
-    const userPayload = {
+    const userPayload = buildInterpretUserPayload({
       message,
       currentDate: input.currentDate,
       timezone: input.timezone,
       userCategories: input.userCategories,
       pendingBatch: input.pendingBatch,
-    };
+      source: input.source,
+      transcript: input.transcript,
+      recordedAt: input.recordedAt,
+      locale: input.locale,
+    });
 
     const completion = await openai.chat.completions.create({
       model: NYX_OPENAI_MODEL,

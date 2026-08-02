@@ -183,6 +183,11 @@ export function NyxPage() {
   const sendingRef = useRef(false);
   const nyxInputRef = useRef<NyxInputHandle>(null);
   const voiceBusyRef = useRef(false);
+  /** Sessão de thinking preparada no mic (evita re-prepare no handleSend). */
+  const thinkingSessionRef = useRef<{
+    holdMs: number;
+    waitUntilEnded: () => Promise<void>;
+  } | null>(null);
   const optionalDescRef = useRef<OptionalDescContext | null>(null);
   const [optionalDescUi, setOptionalDescUi] = useState<OptionalDescUi>("none");
   const installmentCommitmentRef = useRef<ParsedTransaction | null>(null);
@@ -411,7 +416,8 @@ export function NyxPage() {
       if (!pendingBatch || actionIds.length === 0 || persistingBatch) return;
       setPersistingBatch(true);
       setPersistingIds(actionIds);
-      const prepared = prepareThinking();
+      /** Confirmar lançamento → thinking padrão (não thinking_audio). */
+      const prepared = prepareThinking("default");
       const { holdMs, waitUntilEnded } = prepared;
       notifyMessageSent();
       setNyxState("thinking");
@@ -491,6 +497,8 @@ export function NyxPage() {
         source?: "text" | "audio";
         recordedAt?: string;
         locale?: string;
+        /** Já chamou prepareThinking("voice") no fluxo do mic. */
+        thinkingPrepared?: boolean;
       }
     ) => {
       const trimmed = text.trim();
@@ -528,9 +536,19 @@ export function NyxPage() {
         },
       ]);
       playMessageSentSound();
-      setNyxState("thinking");
-      const preparedThinking = prepareThinking();
+
+      /**
+       * Áudio → *_thinking_audio* | Texto → thinking-pulse / eva_thinking.
+       * Preparar ANTES de setNyxState("thinking") para o efeito tocar o modo certo.
+       */
+      const preparedThinking =
+        meta?.thinkingPrepared && thinkingSessionRef.current
+          ? thinkingSessionRef.current
+          : prepareThinking(fromAudio ? "voice" : "default");
+      thinkingSessionRef.current = null;
       const { holdMs, waitUntilEnded } = preparedThinking;
+
+      setNyxState("thinking");
       notifyMessageSent();
       const thinkUntil = Date.now() + holdMs;
 
@@ -819,6 +837,9 @@ export function NyxPage() {
 
     try {
       setVoicePhase("uploading");
+      /** thinking_audio começa já na transcrição (só fluxo de áudio). */
+      const prepared = prepareThinking("voice");
+      thinkingSessionRef.current = prepared;
       setNyxState("thinking");
       setVoicePhase("transcribing");
       const { transcript, locale } = await transcribeAudioBlob(blob, {
@@ -828,13 +849,17 @@ export function NyxPage() {
       // Libera referência ao blob o quanto antes (stream já foi parado no recorder).
       blob = null;
 
-      const meta = buildAudioInterpretMeta(transcript, { recordedAt, locale });
+      const meta = {
+        ...buildAudioInterpretMeta(transcript, { recordedAt, locale }),
+        thinkingPrepared: true as const,
+      };
       setVoicePhase("interpreting");
       await handleSend(meta.transcript, undefined, meta);
 
       setVoicePhase("idle");
       setVoiceError(null);
     } catch (e) {
+      thinkingSessionRef.current = null;
       const msg =
         e instanceof Error ? e.message : "Falha ao processar o áudio.";
       setVoicePhase("error");
@@ -850,6 +875,7 @@ export function NyxPage() {
     voiceUiBlocked,
     voiceRecorder,
     handleSend,
+    prepareThinking,
     notifyInteraction,
     notifyError,
     addNyxResponse,
@@ -914,9 +940,9 @@ export function NyxPage() {
     const next = visualState;
     prevVisualRef.current = next;
 
-    if (next === "thinking") {
+    if (next === "thinking" && prev !== "thinking") {
       playThinking();
-    } else if (prev === "thinking") {
+    } else if (prev === "thinking" && next !== "thinking") {
       stopThinking("interpretation ready");
     }
 

@@ -1,15 +1,21 @@
 /**
  * Mapa de microsons da Nyx (ElevenLabs).
  *
- * Thinking: nyx_thinking_audio0..7 em public/nyx/sounds/
- * Playback rate >1 acelera a fala (pedido: um pouco mais rápido).
+ * Thinking (texto / confirmar lançamento): thinking-pulse*.mp3
+ * Thinking voice (só quando o lead manda áudio): nyx_thinking_audio0..7
  */
 
 /** Master = 1 → volumes do mapa são o volume FINAL efetivo. */
 export const NYX_SOUND_VOLUME = 1;
 
-/** Aceleração dos thinking (e success). */
-export const NYX_THINKING_PLAYBACK_RATE = 1.55;
+/** Aceleração do thinking_audio (fala). */
+export const NYX_THINKING_VOICE_PLAYBACK_RATE = 1.55;
+
+/** Aceleração do thinking padrão (pulse). */
+export const NYX_THINKING_PLAYBACK_RATE = 1.4;
+
+/** @deprecated Use NYX_THINKING_VOICE_PLAYBACK_RATE */
+export const NYX_THINKING_AUDIO_PLAYBACK_RATE = NYX_THINKING_VOICE_PLAYBACK_RATE;
 
 export type NyxSoundKey =
   | "thinkingShort"
@@ -40,22 +46,37 @@ export type NyxSoundDef = {
   fileName: string;
 };
 
-const thinking = (n: number): NyxSoundDef => ({
+/** Modo do thinking: pulse (texto/confirm) vs voice (entrada por áudio). */
+export type ThinkingSoundMode = "default" | "voice";
+
+const pulse = (
+  file: string,
+  volume = 0.32,
+  rate = NYX_THINKING_PLAYBACK_RATE
+): NyxSoundDef => ({
+  src: `/nyx/sounds/${file}`,
+  fileName: file,
+  volume,
+  playbackRate: rate,
+});
+
+const thinkingVoice = (n: number): NyxSoundDef => ({
   src: `/nyx/sounds/nyx_thinking_audio${n}.mp3`,
   fileName: `nyx_thinking_audio${n}.mp3`,
   volume: 0.32,
-  playbackRate: NYX_THINKING_PLAYBACK_RATE,
+  playbackRate: NYX_THINKING_VOICE_PLAYBACK_RATE,
 });
 
 export const NYX_SOUND_MAP: Record<NyxSoundKey, NyxSoundDef> = {
-  thinkingShort: thinking(0),
-  thinkingLong: thinking(1),
-  thinkingC: thinking(2),
-  thinkingD: thinking(3),
-  thinkingE: thinking(4),
-  thinkingF: thinking(5),
-  thinkingG: thinking(6),
-  thinkingH: thinking(7),
+  thinkingShort: pulse("thinking-pulse1.mp3"),
+  thinkingLong: pulse("thinking-pulse.mp3", 0.3),
+  thinkingC: pulse("thinking-pulse2.mp3"),
+  thinkingD: pulse("thinking-pulse3.mp3"),
+  thinkingE: pulse("thinking-pulse4.mp3"),
+  // Slots extras (não entram no sorteio padrão; aliases dos pulses)
+  thinkingF: pulse("thinking-pulse2.mp3"),
+  thinkingG: pulse("thinking-pulse3.mp3"),
+  thinkingH: pulse("thinking-pulse4.mp3"),
   successA: {
     src: "/nyx/sounds/success-chime.mp3",
     fileName: "success-chime.mp3",
@@ -118,16 +139,25 @@ export const NYX_SOUND_MAP: Record<NyxSoundKey, NyxSoundDef> = {
   },
 };
 
-/** Variantes thinking da Nyx (0–7). */
+/** Thinking padrão (texto + confirmar lançamento). */
 export const NYX_THINKING_KEYS: NyxSoundKey[] = [
   "thinkingShort",
   "thinkingLong",
   "thinkingC",
   "thinkingD",
   "thinkingE",
-  "thinkingF",
-  "thinkingG",
-  "thinkingH",
+];
+
+/** Thinking_audio — só quando o lead manda áudio. */
+export const NYX_THINKING_VOICE_DEFS: NyxSoundDef[] = [
+  thinkingVoice(0),
+  thinkingVoice(1),
+  thinkingVoice(2),
+  thinkingVoice(3),
+  thinkingVoice(4),
+  thinkingVoice(5),
+  thinkingVoice(6),
+  thinkingVoice(7),
 ];
 
 export const NYX_SOUND_STORAGE_KEY = "nyx_sound_enabled";

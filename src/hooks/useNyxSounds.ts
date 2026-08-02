@@ -8,7 +8,9 @@ import {
   getExtraCigaretteDefs,
   getExtraSuccessDefs,
   getThinkingKeys,
+  getThinkingVoiceDefs,
   type CharacterSoundMap,
+  type ThinkingSoundMode,
 } from "@/lib/assistant/soundMaps";
 import {
   NYX_MAIN_SOUND_KEYS,
@@ -23,13 +25,16 @@ import {
 
 type AudioPool = Partial<Record<NyxSoundKey, HTMLAudioElement>>;
 type ThinkingPick = NyxSoundKey;
+type ThinkingTarget =
+  | { mode: "default"; key: ThinkingPick }
+  | { mode: "voice"; def: NyxSoundDef; token: string };
 type SuccessPick = "successA" | "successB" | "successC" | "successD";
 type CigarettePick = "cigarro" | "cigarroB" | "cigarroC";
 
 const SUCCESS_KEYS: SuccessPick[] = ["successA", "successB", "successC", "successD"];
 const CIGARETTE_KEYS: CigarettePick[] = ["cigarro", "cigarroB", "cigarroC"];
 
-/** Todos os slots thinking possíveis (Nyx 8 + Eva usa subset). */
+/** Slots thinking padrão (pulse / eva_thinking). */
 const ALL_THINKING_KEYS: NyxSoundKey[] = NYX_THINKING_KEYS;
 
 /** Sons reais (ElevenLabs). Opcionais ausentes não devem ser tocados. */
@@ -135,7 +140,9 @@ export function useNyxSounds() {
   const extraPoolRef = useRef<HTMLAudioElement[]>([]);
 
   const lastThinkingRef = useRef<ThinkingPick | null>(null);
-  const preparedThinkingRef = useRef<ThinkingPick | null>(null);
+  const lastThinkingVoiceTokenRef = useRef<string | null>(null);
+  const preparedThinkingRef = useRef<ThinkingTarget | null>(null);
+  const activeVoiceThinkingRef = useRef<HTMLAudioElement | null>(null);
   const lastSuccessTokenRef = useRef<string | null>(null);
   const lastCigaretteTokenRef = useRef<string | null>(null);
   const thinkingEndedResolveRef = useRef<(() => void) | null>(null);
@@ -156,36 +163,75 @@ export function useNyxSounds() {
     return pick;
   }, []);
 
-  const holdMsForPick = useCallback((pick: ThinkingPick) => {
-    const def = soundMapRef.current[pick];
-    const el = poolRef.current[pick];
-    const rate = def?.playbackRate || 1.55;
+  const pickThinkingVoice = useCallback((): { def: NyxSoundDef; token: string } => {
+    const defs = getThinkingVoiceDefs(audioKeyRef.current);
+    const tokens = defs.map((d) => d.fileName);
+    const token = randomWithoutImmediateRepeat(tokens, lastThinkingVoiceTokenRef.current);
+    lastThinkingVoiceTokenRef.current = token;
+    const def = defs.find((d) => d.fileName === token) ?? defs[0]!;
+    return { def, token };
+  }, []);
+
+  const holdMsForDef = useCallback((def: NyxSoundDef, el?: HTMLAudioElement | null) => {
+    const rate = def.playbackRate || 1.4;
     if (el && Number.isFinite(el.duration) && el.duration > 0) {
       return Math.ceil((el.duration / rate) * 1000) + 80;
     }
-    // Fallback antes do metadata carregar (~3–6s efetivos @ 1.55x)
-    return 2800 + Math.random() * 2200;
+    // Fallback antes do metadata carregar
+    return def.fileName.includes("thinking_audio")
+      ? 2800 + Math.random() * 2200
+      : 1800 + Math.random() * 1600;
   }, []);
 
-  const prepareThinking = useCallback(() => {
-    const pick = pickThinking();
-    preparedThinkingRef.current = pick;
-    const gen = ++thinkingGenRef.current;
+  const holdMsForPick = useCallback(
+    (pick: ThinkingPick) => {
+      const def = soundMapRef.current[pick];
+      return holdMsForDef(def, poolRef.current[pick]);
+    },
+    [holdMsForDef]
+  );
 
-    thinkingWaitRef.current = new Promise<void>((resolve) => {
-      thinkingEndedResolveRef.current = resolve;
-    });
+  /**
+   * Prepara thinking:
+   * - `default` → thinking-pulse / eva_thinking (texto + confirmar)
+   * - `voice` → *_thinking_audio* (só entrada por áudio)
+   */
+  const prepareThinking = useCallback(
+    (mode: ThinkingSoundMode = "default") => {
+      const gen = ++thinkingGenRef.current;
 
-    const holdMs = holdMsForPick(pick);
-    return {
-      holdMs,
-      variant: (pick === "thinkingLong" ? "long" : "short") as "short" | "long",
-      fileName: soundMapRef.current[pick].fileName,
-      /** Resolve quando o thinking áudio terminar (ou timeout/fallback). */
-      waitUntilEnded: () => thinkingWaitRef.current,
-      gen,
-    };
-  }, [pickThinking, holdMsForPick]);
+      thinkingWaitRef.current = new Promise<void>((resolve) => {
+        thinkingEndedResolveRef.current = resolve;
+      });
+
+      if (mode === "voice") {
+        const { def, token } = pickThinkingVoice();
+        preparedThinkingRef.current = { mode: "voice", def, token };
+        const holdMs = holdMsForDef(def);
+        return {
+          holdMs,
+          mode,
+          variant: "short" as const,
+          fileName: def.fileName,
+          waitUntilEnded: () => thinkingWaitRef.current,
+          gen,
+        };
+      }
+
+      const pick = pickThinking();
+      preparedThinkingRef.current = { mode: "default", key: pick };
+      const holdMs = holdMsForPick(pick);
+      return {
+        holdMs,
+        mode,
+        variant: (pick === "thinkingLong" ? "long" : "short") as "short" | "long",
+        fileName: soundMapRef.current[pick].fileName,
+        waitUntilEnded: () => thinkingWaitRef.current,
+        gen,
+      };
+    },
+    [pickThinking, pickThinkingVoice, holdMsForPick, holdMsForDef]
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -230,6 +276,8 @@ export function useNyxSounds() {
     activeMainRef.current = null;
     preparedThinkingRef.current = null;
     lastThinkingRef.current = null;
+    lastThinkingVoiceTokenRef.current = null;
+    activeVoiceThinkingRef.current = null;
     lastSuccessTokenRef.current = null;
     lastCigaretteTokenRef.current = null;
     if (unlockedRef.current) {
@@ -308,6 +356,16 @@ export function useNyxSounds() {
     preloadedRef.current = true;
     for (const key of NYX_SOUND_PRELOAD_ORDER) {
       getAudio(key);
+    }
+    // Prefetch thinking_audio (só usado em entrada por voz)
+    for (const def of getThinkingVoiceDefs(audioKeyRef.current)) {
+      try {
+        const el = new Audio();
+        el.preload = "auto";
+        el.src = encodeURI(def.src);
+      } catch {
+        /* noop */
+      }
     }
   }, [getAudio]);
 
@@ -486,13 +544,69 @@ export function useNyxSounds() {
 
   const playThinking = useCallback(() => {
     stopMainSounds();
-    const pick = preparedThinkingRef.current ?? pickThinking();
+    const prepared =
+      preparedThinkingRef.current ??
+      ({ mode: "default", key: pickThinking() } satisfies ThinkingTarget);
     preparedThinkingRef.current = null;
     const gen = thinkingGenRef.current;
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (activeVoiceThinkingRef.current) {
+        safePauseReset(activeVoiceThinkingRef.current);
+        activeVoiceThinkingRef.current = null;
+      }
+      resolveThinkingEnded(gen);
+    };
+
+    if (prepared.mode === "voice") {
+      const def = prepared.def;
+      if (!canPlay() || typeof window === "undefined") {
+        window.setTimeout(finish, holdMsForDef(def));
+        return;
+      }
+      const el = new Audio();
+      el.preload = "auto";
+      el.src = encodeURI(def.src);
+      applyPlayback(el, def);
+      activeVoiceThinkingRef.current = el;
+      extraPoolRef.current.push(el);
+
+      const onEnded = () => {
+        el.removeEventListener("ended", onEnded);
+        if (activeVoiceThinkingRef.current === el) {
+          activeVoiceThinkingRef.current = null;
+        }
+        finish();
+      };
+      el.addEventListener("ended", onEnded);
+      el.addEventListener("error", () => {
+        el.removeEventListener("ended", onEnded);
+        finish();
+      });
+
+      void el.play().then(
+        () => {
+          logAudio(`thinking voice started: ${def.fileName}`);
+          const maxWait = Math.max(holdMsForDef(def, el) + 1500, 4000);
+          window.setTimeout(() => {
+            el.removeEventListener("ended", onEnded);
+            finish();
+          }, maxWait);
+        },
+        () => {
+          el.removeEventListener("ended", onEnded);
+          finish();
+        }
+      );
+      return;
+    }
+
+    const pick = prepared.key;
     const def = soundMapRef.current[pick];
     const el = getAudio(pick);
-
-    const finish = () => resolveThinkingEnded(gen);
 
     if (!canPlay() || !el) {
       window.setTimeout(finish, holdMsForPick(pick));
@@ -527,6 +641,7 @@ export function useNyxSounds() {
     getAudio,
     canPlay,
     holdMsForPick,
+    holdMsForDef,
     resolveThinkingEnded,
   ]);
 
@@ -537,6 +652,10 @@ export function useNyxSounds() {
         activeMainRef.current !== null &&
         keys.includes(activeMainRef.current);
       for (const key of ALL_THINKING_KEYS) stopKey(key);
+      if (activeVoiceThinkingRef.current) {
+        safePauseReset(activeVoiceThinkingRef.current);
+        activeVoiceThinkingRef.current = null;
+      }
       if (was) logAudio(`thinking stopped: ${reason}`);
       resolveThinkingEnded(thinkingGenRef.current);
     },

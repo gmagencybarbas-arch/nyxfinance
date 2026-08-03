@@ -667,11 +667,21 @@ export function useNyxSounds() {
   }, [stopThinking]);
 
   const playSuccess = useCallback(() => {
+    // Encerra thinking/cigarro/pool antes do chime — playDef usa Audio fresco
+    // (não reutiliza pool, onde o thinking da Nyx podia abortar o success).
     stopMainSounds();
+    activeVoiceThinkingRef.current = null;
+    resolveThinkingEnded(thinkingGenRef.current);
+
     const target = pickSuccessTarget();
-    if (target.kind === "key") void playKey(target.key, "success");
-    else void playDef(target.def, "success");
-  }, [stopMainSounds, pickSuccessTarget, playKey, playDef]);
+    const def =
+      target.kind === "key" ? soundMapRef.current[target.key] : target.def;
+    if (target.kind === "key") {
+      missingRef.current.delete(target.key);
+      delete poolRef.current[target.key];
+    }
+    void playDef(def, "success");
+  }, [stopMainSounds, resolveThinkingEnded, pickSuccessTarget, playDef]);
 
   const playError = useCallback(() => {
     stopMainSounds();

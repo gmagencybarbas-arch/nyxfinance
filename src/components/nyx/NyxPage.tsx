@@ -419,8 +419,13 @@ export function NyxPage() {
       /** Confirmar lançamento → thinking padrão (não thinking_audio). */
       const prepared = prepareThinking("default");
       const { holdMs, waitUntilEnded } = prepared;
+      /** Se já estava em thinking (ex.: após interpretar), o efeito não re-dispara. */
+      const alreadyThinking = visualState === "thinking";
       notifyMessageSent();
       setNyxState("thinking");
+      if (alreadyThinking) {
+        playThinking();
+      }
       const selected = pendingBatch.actions.filter((a) => actionIds.includes(a.actionId));
       const results = await persistNyxActions(selected);
       await Promise.race([
@@ -464,7 +469,7 @@ export function NyxPage() {
       setPersistingBatch(false);
       setPersistingIds([]);
     },
-    [pendingBatch, persistingBatch, addNyxResponse, finishSpeaking, prepareThinking, notifyInteraction, notifySuccess, notifyMessageSent, notifyReviewReady, notifyError, resetToMaster, notifyTypingCleared, notifyTyping]
+    [pendingBatch, persistingBatch, addNyxResponse, finishSpeaking, prepareThinking, playThinking, visualState, notifyInteraction, notifySuccess, notifyMessageSent, notifyReviewReady, notifyError, resetToMaster, notifyTypingCleared, notifyTyping]
   );
 
   const handleConfirmAllBatch = useCallback(() => {
@@ -940,15 +945,16 @@ export function NyxPage() {
     const next = visualState;
     prevVisualRef.current = next;
 
-    if (next === "thinking" && prev !== "thinking") {
+    // Sucesso primeiro: playSuccess já encerra thinking e toca o chime/voz.
+    // Evita stopThinking → playSuccess em sequência matar o áudio da Nyx no pool.
+    if (next === "sucess" && prev !== "sucess") {
+      playSuccess();
+    } else if (next === "thinking" && prev !== "thinking") {
       playThinking();
     } else if (prev === "thinking" && next !== "thinking") {
       stopThinking("interpretation ready");
     }
 
-    if (next === "sucess" && prev !== "sucess") {
-      playSuccess();
-    }
     if (next === "error" && prev !== "error") {
       playError();
     }
